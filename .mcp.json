@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "repo39": {
+      "type": "stdio",
+      "command": "./target/debug/repo39-mcp",
+      "args": []
+    }
+  }
+}

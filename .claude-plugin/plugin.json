@@ -1,0 +1,11 @@
+{
+  "name": "repo39",
+  "version": "0.1.0",
+  "description": "Token-optimized repository explorer for AI agents",
+  "components": {
+    "mcp": {
+      "config": "../.mcp.json"
+    }
+  },
+  "postInstall": "The repo39-mcp binary must be in your PATH or update the path in .mcp.json"
+}

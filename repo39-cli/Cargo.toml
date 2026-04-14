@@ -1,0 +1,16 @@
+[package]
+name = "repo39-cli"
+version.workspace = true
+edition.workspace = true
+description = "Token-optimized repo explorer for AI agents"
+
+[[bin]]
+name = "repo39"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+regex = "1"
+
+[dev-dependencies]
+tempfile = "3"

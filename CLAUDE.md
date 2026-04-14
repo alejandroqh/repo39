@@ -5,36 +5,56 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Build & Run
 
 ```bash
-cargo build              # dev build
-cargo build --release    # optimized release build
-cargo run                # run the CLI
-cargo test               # run all tests
-cargo test test_name     # run a single test
+cargo build                          # build all (cli + mcp)
+cargo build -p repo39-cli            # build CLI only
+cargo build -p repo39-mcp            # build MCP server only
+cargo build --release                # optimized release build
+cargo run -p repo39-cli -- <args>    # run CLI
+cargo test                           # run all tests
+cargo test -p repo39-cli             # run CLI tests
 ```
 
 ## Architecture
 
+Cargo workspace with two standalone binary crates:
+
+### repo39-cli
 Rust CLI using `clap` (v4, derive API). Single-binary, edition 2024.
 
-- `src/main.rs` — entry point, CLI parsing, recursive directory walker
-
-Takes a folder path (relative or absolute), outputs a token-compact tree listing. Auto-skips noisy dirs (.git, node_modules, target, etc).
-
-Output format: indented tree (1 space per depth level). `name/` = dir, `name` = file. Sorted alphabetically per level.
+Takes a folder path, outputs a token-compact tree listing. Auto-skips noisy dirs (.git, node_modules, target, etc).
 
 CLI flags:
 - `-s <chars>` — show filter: `f`=files `d`=dirs `h`=hidden `c`=count `a`=all (default: `fd`)
 - `-d <N>` — max depth: `0`=root only (default), `1`=root+one level, large N=unlimited
-- `-s c` appends file count to truncated dirs: `src/ 3`
+- `-o <char>` — sort: `n`=name `s`=size `m`=modified `c`=created
+- `-i <chars>` — info: `s`=size `m`=modified `c`=created `g`=git
+- `-n <N>` — max files per directory
+- `-g <glob>` — grep files by name glob
+- `--identify` — detect project type(s) with confidence scores
+- `--map` — extract code symbols (functions, structs, classes)
+- `--deps` — list dependencies from manifest files
+- `--changes` — show recent git changes
 
-Release profile: strip + LTO + single codegen unit.
+### repo39-mcp
+MCP server using `rmcp` (TurboMCP). Runs over stdio transport.
+
+Exposes 5 tools:
+- `repo39_tree` — directory tree listing
+- `repo39_identify` — project type detection
+- `repo39_map` — code symbol extraction
+- `repo39_deps` — dependency parsing
+- `repo39_changes` — git change log
+
+Configured as local MCP server via `.mcp.json`. Use the repo39 MCP tools to test the project.
 
 ## Design Principles
 
 This is a support tool for AI agents. Primary optimization target: **minimize token usage**.
 
-- All output must be as compact as possible — agents pay per token for every byte of stdout/stderr
-- Prefer terse, structured output (key=value, single-line records) over human-friendly prose
-- Avoid decorative output: no banners, no progress bars, no color codes unless explicitly requested
+- All output must be as compact as possible — agents pay per token
+- Prefer terse, structured output over human-friendly prose
+- Avoid decorative output: no banners, no progress bars, no color codes
 - Error messages: short, actionable, single-line
 - When in doubt between readable and compact, choose compact
+
+Release profile: strip + LTO + single codegen unit.
