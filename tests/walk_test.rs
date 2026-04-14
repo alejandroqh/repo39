@@ -19,6 +19,10 @@ fn create_tree(base: &Path) {
 }
 
 fn run_on_tree(show: Option<&str>, depth: Option<usize>) -> (tempfile::TempDir, Vec<String>) {
+    run_on_tree_grep(show, depth, None)
+}
+
+fn run_on_tree_grep(show: Option<&str>, depth: Option<usize>, grep: Option<&str>) -> (tempfile::TempDir, Vec<String>) {
     let tmp = tempfile::tempdir().unwrap();
     create_tree(tmp.path());
     let mut args = vec![tmp.path().to_str().unwrap().to_string()];
@@ -29,6 +33,10 @@ fn run_on_tree(show: Option<&str>, depth: Option<usize>) -> (tempfile::TempDir, 
     if let Some(d) = depth {
         args.push("-d".into());
         args.push(d.to_string());
+    }
+    if let Some(g) = grep {
+        args.push("-g".into());
+        args.push(g.into());
     }
     let out = repo39_bin()
         .args(&args)
@@ -193,4 +201,74 @@ fn count_respects_hidden() {
 
     // .hidden_dir has 1 file: data
     assert!(l.iter().any(|s| s.starts_with(".hidden_dir/ 1")));
+}
+
+// --- grep tests ---
+
+#[test]
+fn grep_exact_filename() {
+    let (_tmp, l) = run_on_tree_grep(None, None, Some("readme.txt"));
+
+    assert!(l.contains(&"readme.txt".into()));
+    // no other files
+    assert_eq!(l.len(), 1);
+}
+
+#[test]
+fn grep_star_extension() {
+    let (_tmp, l) = run_on_tree_grep(None, None, Some("*.rs"));
+
+    // main.rs and lib.rs with their parent dirs
+    assert!(l.contains(&"src/".into()));
+    assert!(l.contains(&" main.rs".into()));
+    assert!(l.contains(&" nested/".into()));
+    assert!(l.contains(&"  lib.rs".into()));
+    // no non-rs files
+    assert!(!l.iter().any(|s| s.trim_start() == "readme.txt"));
+}
+
+#[test]
+fn grep_prefix_star() {
+    let (_tmp, l) = run_on_tree_grep(None, None, Some("main*"));
+
+    assert!(l.contains(&"src/".into()));
+    assert!(l.contains(&" main.rs".into()));
+}
+
+#[test]
+fn grep_no_match_empty_output() {
+    let (_tmp, l) = run_on_tree_grep(None, None, Some("nonexistent.xyz"));
+
+    assert!(l.is_empty());
+}
+
+#[test]
+fn grep_shows_ancestor_dirs() {
+    let (_tmp, l) = run_on_tree_grep(None, None, Some("lib.rs"));
+
+    // lib.rs is in src/nested/ — both ancestors must appear
+    assert!(l.contains(&"src/".into()));
+    assert!(l.contains(&" nested/".into()));
+    assert!(l.contains(&"  lib.rs".into()));
+    assert_eq!(l.len(), 3);
+}
+
+#[test]
+fn grep_respects_hidden_filter() {
+    // without hidden flag, .secret should not match
+    let (_tmp, l) = run_on_tree_grep(None, None, Some(".secret"));
+    assert!(l.is_empty());
+
+    // with hidden flag, .secret matches
+    let (_tmp, l) = run_on_tree_grep(Some("fdh"), None, Some(".secret"));
+    assert!(l.contains(&".secret".into()));
+}
+
+#[test]
+fn grep_star_matches_all() {
+    let (_tmp, l) = run_on_tree_grep(None, None, Some("*"));
+
+    assert!(l.iter().any(|s| s.trim_start() == "readme.txt"));
+    assert!(l.iter().any(|s| s.trim_start() == "main.rs"));
+    assert!(l.iter().any(|s| s.trim_start() == "lib.rs"));
 }
