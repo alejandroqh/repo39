@@ -61,7 +61,7 @@ pub struct Cli {
     pub changes: bool,
 
     /// One-shot repo orientation (identify + deps + map + changes)
-    #[arg(long)]
+    #[arg(long, conflicts_with_all = ["identify", "deps", "map", "changes"])]
     pub summary: bool,
 
     /// Show symbol-level changes between git refs (default: HEAD~1)

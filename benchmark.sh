@@ -22,11 +22,7 @@ fi
 # --- measurement helpers ---
 measure() {
     local input="$1"
-    local bytes words lines
-    bytes=$(printf '%s' "$input" | wc -c | tr -d ' ')
-    words=$(printf '%s' "$input" | wc -w | tr -d ' ')
-    lines=$(printf '%s' "$input" | wc -l | tr -d ' ')
-    echo "$lines $words $bytes"
+    printf '%s' "$input" | wc -lwc | awk '{print $1, $2, $3}'
 }
 
 SKIP_DIRS=(-not -path '*/.git/*' -not -path '*/target/*' -not -path '*/node_modules/*' -not -path '*/__pycache__/*' -not -path '*/.venv/*' -not -path '*/venv/*' -not -path '*/dist/*' -not -path '*/.next/*')
@@ -78,8 +74,8 @@ run_std() {
 
 # --- identify: ls + find extensions ---
 run_std identify ls -1 "$TARGET"
-ext_out=$(find "$TARGET" -type f "${SKIP_DIRS[@]}" -name '*.*' -exec basename {} \; 2>/dev/null \
-    | sed 's/.*\.//' | sort | uniq -c | sort -rn | head -20 || true)
+ext_out=$(find "$TARGET" -type f "${SKIP_DIRS[@]}" -name '*.*' 2>/dev/null \
+    | sed 's|.*/||; s/.*\.//' | sort | uniq -c | sort -rn | head -20 || true)
 m=$(measure "$ext_out"); read -r l w b <<< "$m"
 add_section identify "$l" "$w" "$b"
 
@@ -92,7 +88,8 @@ for mf in "${MANIFESTS[@]}"; do
 done
 # workspace members (Cargo)
 if [ -f "$TARGET/Cargo.toml" ]; then
-    members=$(sed -n 's/.*members.*=.*\[\(.*\)\].*/\1/p' "$TARGET/Cargo.toml" 2>/dev/null | tr -d '"' | tr ',' '\n' | tr -d ' ' || true)
+    members=$(sed -n '/members/,/]/p' "$TARGET/Cargo.toml" 2>/dev/null \
+        | grep -o '"[^"]*"' | tr -d '"' || true)
     for member in $members; do
         if [ -f "$TARGET/$member/Cargo.toml" ]; then
             run_std deps cat "$TARGET/$member/Cargo.toml"
