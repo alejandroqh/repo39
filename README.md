@@ -13,8 +13,10 @@ cargo install --path .
 ## Quick Reference
 
 ```
-repo39 <path> [-s fdhca] [-d N] [-n N] [-g glob] [-o nscm] [-i smcg] [-u KMG]
-              [--identify] [--map] [--deps] [--changes]
+repo39 <path> [-s fdhca] [-d N] [-n N] [-g glob] [-o nscm] [-i smcgt] [-u KMG]
+              [--identify] [--map] [--calls] [--deps] [--changes]
+              [--search <pat> [--regex] [--context N] [--file-filter glob] [--max-results N]]
+              [--review [ref]]
 ```
 
 | Flag | What | Values | Default |
@@ -24,14 +26,21 @@ repo39 <path> [-s fdhca] [-d N] [-n N] [-g glob] [-o nscm] [-i smcg] [-u KMG]
 | `-n` | limit per subfolder | `0`=unlimited, `1`..N (root always unlimited) | `0` |
 | `-g` | grep filename glob | `*.rs`, `pack*`, `Cargo.toml` | - |
 | `-o` | sort | `n`=name `s`=size `m`=modified `c`=created | `n` |
-| `-i` | info to display | `s`=size `m`=modified `c`=created `g`=git | - |
+| `-i` | info to display | `s`=size `m`=modified `c`=created `g`=git `t`=tokens | - |
 | `-u` | size unit | `K`=KB `M`=MB `G`=GB | `K` |
 | `--identify` | detect project type(s) with confidence | - | - |
 | `--map` | extract code symbols (fn, struct, class) | uses `-d`, `-n`, `-g` | - |
+| `--calls` | show intra-file call graph (with `--map`) | - | - |
 | `--deps` | list dependencies from manifest files | - | - |
 | `--changes` | compact git log (recent file changes) | - | - |
+| `--search` | search file contents | literal or regex pattern | - |
+| `--regex` | treat `--search` pattern as regex | - | off |
+| `--context` | context lines around search matches | `0`..N | `0` |
+| `--file-filter` | file glob for search | `*.rs`, `*.toml` | - |
+| `--max-results` | max search matches | `0`=unlimited, N | `50` |
+| `--review` | symbol-level diff vs git ref | git ref (e.g. `main`, `HEAD~3`) | `HEAD~1` |
 
-Standalone flags (`--identify`, `--map`, `--deps`, `--changes`) can be combined. When multiple are used, output is sectioned with `[label]` headers.
+Standalone flags (`--identify`, `--map`, `--deps`, `--changes`, `--search`, `--review`) can be combined. When multiple are used, output is sectioned with `[label]` headers.
 
 ## Output Format
 
@@ -45,6 +54,9 @@ name/ 3     dir with file count (-s c at depth limit)
 *name       git dirty file (-i g)
 name 1.4K   file with size (-i s)
 name 2026-04-10   file with date (-i m or -i c)
+name 450     file with token count (-i t)
++fn foo:10   public symbol with line number (--map)
+fn bar:20 -> baz, qux   call graph (--map --calls)
 ```
 
 ## Agent Workflow
@@ -60,7 +72,7 @@ markdown 0.39
 docs 0.12
 ```
 
-52 categories: languages, frameworks, non-code (images, data, docs, devops, etc). Top 5 matches with confidence 0.00-1.00.
+71 categories: 22 languages, 37 frameworks, 12 non-code (images, data, docs, devops, etc). Top 5 matches with confidence 0.00-1.00. Framework detection uses dependency analysis (e.g. detects React, Django, Spring from manifests).
 
 ### 2. Read dependencies
 
@@ -77,19 +89,30 @@ Parses: Cargo.toml, package.json, pyproject.toml, requirements.txt, go.mod, Gemf
 
 ### 3. Get the code map
 
+13 languages: Rust, Python, JS, TS, Go, Java/Kotlin, Ruby, PHP, C/C++, Swift, Elixir, Dart, Shell.
+
+Symbols include line numbers and visibility (`+` = public):
 ```bash
 repo39 /project --map -d 99
 ```
 ```
 src/main.rs
- fn main
+ fn main:1
 src/walk.rs
- struct WalkCtx
- fn walk
- fn grep_walk
+ +struct WalkCtx:5
+ +fn walk:12
+ fn grep_walk:30
 ```
 
-12 languages: Rust, Python, JS, TS, Go, Java, Kotlin, Ruby, PHP, C/C++, Swift, Elixir, Shell.
+Show call graph:
+```bash
+repo39 /project --map --calls -d 99
+```
+```
+src/walk.rs
+ +fn walk:12 -> grep_walk
+ fn grep_walk:30
+```
 
 Limit symbols per file:
 ```bash
@@ -97,9 +120,9 @@ repo39 /project --map -d 99 -n 3
 ```
 ```
 src/config.rs
- struct Cli
- struct ShowFilter
- impl ShowFilter
+ struct Cli:5
+ struct ShowFilter:12
+ impl ShowFilter:20
  ...+9
 ```
 
@@ -109,8 +132,8 @@ repo39 /project --map -d 99 -g "login*"
 ```
 ```
 src/auth.rs
- fn login
- fn login_handler
+ fn login:8
+ fn login_handler:15
 ```
 
 ### 4. Check recent activity
@@ -126,7 +149,50 @@ repo39 /project --changes
 
 Time-relative (`3m`, `2h`, `1d`, `2w`, `3M`, `1y`). Shows insertions/deletions, `new`/`del` markers.
 
-### 5. Full picture in one command
+### 5. Search file contents
+
+```bash
+repo39 /project --search "TODO"
+```
+```
+src/main.rs:42 // TODO: handle error
+src/walk.rs:18 // TODO: optimize
+```
+
+With regex and context:
+```bash
+repo39 /project --search "fn\s+test_" --regex --context 1 --file-filter "*.rs"
+```
+```
+src/walk.rs
+17-
+18:fn test_walk() {
+19-    let ctx = WalkCtx::new();
+```
+
+Max 50 results by default. Use `--max-results 0` for unlimited.
+
+### 6. Review symbol-level changes
+
+```bash
+repo39 /project --review
+```
+```
+src/main.rs
+ +fn new_feature:45
+ ~fn main:1
+src/old.rs
+ -fn deprecated
+```
+
+Compares against `HEAD~1` by default. Specify a ref:
+```bash
+repo39 /project --review main
+```
+
+Symbols: `+` = added, `-` = removed, `~` = modified. Max 20 changed files.
+
+### 7. Full picture in one command
 
 ```bash
 repo39 /project --identify --deps --map -d 1
@@ -142,13 +208,13 @@ regex 1
 
 [map]
 src/main.rs
- fn main
+ fn main:1
 src/walk.rs
- struct WalkCtx
- fn walk
+ +struct WalkCtx:5
+ +fn walk:12
 ```
 
-### 6. Explore structure
+### 8. Explore structure
 
 ```bash
 repo39 /project -d 1 -n 3
@@ -165,7 +231,7 @@ src/
 
 One level deep, max 3 items per subfolder.
 
-### 7. Find specific files
+### 9. Find specific files
 
 ```bash
 repo39 /project -g "*.json" -s a
@@ -178,7 +244,7 @@ config/
 
 Full depth search. Only matching files + ancestor dirs shown.
 
-### 8. Check sizes and dates
+### 10. Check sizes and dates
 
 ```bash
 repo39 /project -d 1 -i sm
@@ -189,7 +255,7 @@ src/
  main.rs 22K 2026-04-10
 ```
 
-### 9. Git dirty files
+### 11. Git dirty files
 
 ```bash
 repo39 /project -d 99 -i g
@@ -207,6 +273,35 @@ Dirty files prefixed with `*`. Warns on non-git folders.
 `.git`, `node_modules`, `target`, `__pycache__`, `.venv`, `venv`, `dist`, `.next`
 
 Note: `--identify` does NOT skip these — their presence is a detection signal.
+
+## MCP Server
+
+`repo39-mcp` exposes the same capabilities as an MCP server over stdio. Configure via `.mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "repo39": {
+      "command": "repo39-mcp"
+    }
+  }
+}
+```
+
+### Tools
+
+| Tool | Description | Extra params vs CLI |
+|------|-------------|---------------------|
+| `repo39_tree` | directory tree listing | - |
+| `repo39_identify` | project type detection | - |
+| `repo39_map` | code symbol extraction | `calls` (bool) |
+| `repo39_deps` | dependency parsing | - |
+| `repo39_changes` | git change log | `branch` (e.g. `main..HEAD`) |
+| `repo39_search` | content search | `file_glob`, `is_regex`, `context`, `max_results` |
+| `repo39_review` | symbol-level diff | `ref_spec` |
+| `repo39_summary` | one-shot repo orientation (identify + deps + map + changes) | - |
+
+All tools take a required `path` parameter. Tree/map tools accept `depth`, `limit`, `grep` as in the CLI.
 
 ## Cross-platform
 
