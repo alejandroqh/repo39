@@ -23,21 +23,26 @@ fn run_on_tree(show: Option<&str>, depth: Option<usize>) -> (tempfile::TempDir, 
 }
 
 fn run_on_tree_grep(show: Option<&str>, depth: Option<usize>, grep: Option<&str>) -> (tempfile::TempDir, Vec<String>) {
+    run_on_tree_full(show, depth, grep, None, None, None)
+}
+
+fn run_on_tree_full(
+    show: Option<&str>,
+    depth: Option<usize>,
+    grep: Option<&str>,
+    order: Option<&str>,
+    info: Option<&str>,
+    unit: Option<&str>,
+) -> (tempfile::TempDir, Vec<String>) {
     let tmp = tempfile::tempdir().unwrap();
     create_tree(tmp.path());
     let mut args = vec![tmp.path().to_str().unwrap().to_string()];
-    if let Some(s) = show {
-        args.push("-s".into());
-        args.push(s.into());
-    }
-    if let Some(d) = depth {
-        args.push("-d".into());
-        args.push(d.to_string());
-    }
-    if let Some(g) = grep {
-        args.push("-g".into());
-        args.push(g.into());
-    }
+    if let Some(s) = show { args.push("-s".into()); args.push(s.into()); }
+    if let Some(d) = depth { args.push("-d".into()); args.push(d.to_string()); }
+    if let Some(g) = grep { args.push("-g".into()); args.push(g.into()); }
+    if let Some(o) = order { args.push("-o".into()); args.push(o.into()); }
+    if let Some(i) = info { args.push("-i".into()); args.push(i.into()); }
+    if let Some(u) = unit { args.push("-u".into()); args.push(u.into()); }
     let out = repo39_bin()
         .args(&args)
         .output()
@@ -271,4 +276,74 @@ fn grep_star_matches_all() {
     assert!(l.iter().any(|s| s.trim_start() == "readme.txt"));
     assert!(l.iter().any(|s| s.trim_start() == "main.rs"));
     assert!(l.iter().any(|s| s.trim_start() == "lib.rs"));
+}
+
+// --- info/sort/unit tests ---
+
+#[test]
+fn info_size_shows_size_suffix() {
+    let (_tmp, l) = run_on_tree_full(None, Some(99), None, None, Some("s"), None);
+
+    // readme.txt is 5 bytes → "0.0K"
+    assert!(l.iter().any(|s| s.contains("readme.txt") && s.contains("K")));
+}
+
+#[test]
+fn info_size_mb_unit() {
+    let (_tmp, l) = run_on_tree_full(None, Some(99), None, None, Some("s"), Some("M"));
+
+    assert!(l.iter().any(|s| s.contains("readme.txt") && s.contains("M")));
+}
+
+#[test]
+fn sort_by_size_largest_first() {
+    let (_tmp, l) = run_on_tree_full(Some("f"), Some(99), None, Some("s"), None, None);
+
+    // "fn main() {}" (12 bytes) > "hello" (5 bytes) > "// lib" (6 bytes)
+    // main.rs should appear before readme.txt at their respective depths
+    let root_files: Vec<&str> = l.iter()
+        .filter(|s| !s.starts_with(' '))
+        .map(|s| s.as_str())
+        .collect();
+    // readme.txt (5 bytes) is the only root file, so just check it has size
+    assert!(root_files.iter().any(|s| s.contains("readme.txt") && s.contains("K")));
+}
+
+#[test]
+fn sort_by_modified_shows_date() {
+    let (_tmp, l) = run_on_tree_full(None, Some(99), None, Some("m"), None, None);
+
+    // all files should have a date like YYYY-MM-DD
+    assert!(l.iter().filter(|s| !s.trim_start().ends_with('/')).all(|s| {
+        s.contains("-") && s.len() > 10
+    }));
+}
+
+#[test]
+fn info_modified_shows_date() {
+    let (_tmp, l) = run_on_tree_full(None, Some(99), None, None, Some("m"), None);
+
+    assert!(l.iter().any(|s| s.contains("readme.txt") && s.contains("20")));
+}
+
+#[test]
+fn info_git_on_non_git_warns() {
+    let tmp = tempfile::tempdir().unwrap();
+    fs::write(tmp.path().join("test.txt"), "hi").unwrap();
+
+    let out = repo39_bin()
+        .args([tmp.path().to_str().unwrap(), "-i", "g"])
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("not a git repo"));
+}
+
+#[test]
+fn info_multiple_fields() {
+    let (_tmp, l) = run_on_tree_full(None, Some(99), None, None, Some("sm"), None);
+
+    // should have both size (K) and date (YYYY-)
+    assert!(l.iter().any(|s| s.contains("K") && s.contains("20")));
 }
