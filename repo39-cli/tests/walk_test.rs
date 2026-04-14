@@ -533,11 +533,11 @@ fn identify_output_format() {
     let l = run_identify(tmp.path());
     for line in &l {
         let parts: Vec<&str> = line.split_whitespace().collect();
-        assert_eq!(parts.len(), 2, "each line should be 'name confidence': {line}");
-        let conf: f64 = parts[1].parse().expect("confidence should be f64");
+        assert_eq!(parts.len(), 3, "each line should be 'name category confidence': {line}");
+        let conf: f64 = parts[2].parse().expect("confidence should be f64");
         assert!(conf > 0.0 && conf <= 1.0, "confidence out of range: {conf}");
         // check two decimal places
-        assert!(parts[1].contains('.'), "should have decimal: {}", parts[1]);
+        assert!(parts[2].contains('.'), "should have decimal: {}", parts[2]);
     }
 }
 
@@ -653,14 +653,14 @@ pub struct App {}
     assert!(l.contains(&"src/".into()));
     assert!(l.iter().any(|s| s == " lib.rs"));
     assert!(l.iter().any(|s| s == " main.rs"));
-    assert!(l.iter().any(|s| s == "  fn main"));
-    assert!(l.iter().any(|s| s == "  fn helper"));
-    assert!(l.iter().any(|s| s == "  struct Config"));
-    assert!(l.iter().any(|s| s == "  enum Mode"));
-    assert!(l.iter().any(|s| s == "  trait Runnable"));
-    assert!(l.iter().any(|s| s == "  impl Config"));
-    assert!(l.iter().any(|s| s == "  fn init"));
-    assert!(l.iter().any(|s| s == "  struct App"));
+    assert!(l.iter().any(|s| s.starts_with("  +fn main:")));
+    assert!(l.iter().any(|s| s.starts_with("  fn helper:")));
+    assert!(l.iter().any(|s| s.starts_with("  +struct Config:")));
+    assert!(l.iter().any(|s| s.starts_with("  enum Mode:")));
+    assert!(l.iter().any(|s| s.starts_with("  trait Runnable:")));
+    assert!(l.iter().any(|s| s.starts_with("  impl Config:")));
+    assert!(l.iter().any(|s| s.starts_with("  +fn init:")));
+    assert!(l.iter().any(|s| s.starts_with("  +struct App:")));
 }
 
 #[test]
@@ -696,9 +696,9 @@ class Server:
 
     let l = run_map(tmp.path(), &[]);
     assert!(l.contains(&"app.py".into()));
-    assert!(l.iter().any(|s| s == " def hello"));
-    assert!(l.iter().any(|s| s == " class Server"));
-    assert!(l.iter().any(|s| s == " def run"));
+    assert!(l.iter().any(|s| s.starts_with(" def hello:")));
+    assert!(l.iter().any(|s| s.starts_with(" class Server:")));
+    assert!(l.iter().any(|s| s.starts_with(" def run:")));
 }
 
 #[test]
@@ -708,7 +708,7 @@ fn map_ignores_other_flags() {
 
     let l = run_map(tmp.path(), &["-d", "5", "-s", "a"]);
     assert!(l.contains(&"test.rs".into()));
-    assert!(l.iter().any(|s| s == " fn foo"));
+    assert!(l.iter().any(|s| s.starts_with(" fn foo:")));
     assert!(!l.iter().any(|s| s.ends_with('/')));
 }
 
@@ -725,9 +725,9 @@ fn epsilon() {}
 
     let l = run_map(tmp.path(), &["-n", "2"]);
     assert!(l.contains(&"big.rs".into()));
-    assert!(l.iter().any(|s| s == " fn alpha"));
-    assert!(l.iter().any(|s| s == " fn beta"));
-    assert!(!l.iter().any(|s| s == " fn gamma"));
+    assert!(l.iter().any(|s| s.starts_with(" fn alpha:")));
+    assert!(l.iter().any(|s| s.starts_with(" fn beta:")));
+    assert!(!l.iter().any(|s| s.starts_with(" fn gamma:")));
     assert!(l.iter().any(|s| s == " ...+3"), "should show ...+3: {l:?}");
 }
 
@@ -741,13 +741,13 @@ fn map_depth_limits_subdirs() {
 
     // depth 1 = root + one level only (src/*.rs but not src/nested/*.rs)
     let l = run_map(tmp.path(), &["-d", "1"]);
-    assert!(l.iter().any(|s| s.trim() == "fn shallow"));
-    assert!(l.iter().any(|s| s.trim() == "fn middle"));
+    assert!(l.iter().any(|s| s.trim().starts_with("fn shallow:")));
+    assert!(l.iter().any(|s| s.trim().starts_with("fn middle:")));
     assert!(!l.iter().any(|s| s.contains("deep")));
 
     // default (no -d) = full depth
     let l = run_map(tmp.path(), &[]);
-    assert!(l.iter().any(|s| s.trim() == "fn deep"));
+    assert!(l.iter().any(|s| s.trim().starts_with("fn deep:")));
 }
 
 // --- deps tests ---

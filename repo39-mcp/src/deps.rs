@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fs;
 use std::io::{self, Write};
 use std::path::Path;
@@ -577,16 +578,18 @@ const MANIFEST_FILES: &[(&str, fn(&str) -> Vec<Dep>)] = &[
 ];
 
 pub fn run_deps(root: &Path, out: &mut impl Write) -> io::Result<()> {
-    // Collect all (filename, deps) pairs where deps is non-empty
-    let mut results: Vec<(&str, Vec<Dep>)> = Vec::new();
+    let mut results: Vec<(String, Vec<Dep>)> = Vec::new();
 
-    for &(filename, parser) in MANIFEST_FILES {
-        let path = root.join(filename);
-        if path.is_file() {
-            let content = fs::read_to_string(&path)?;
-            let deps = parser(&content);
-            if !deps.is_empty() {
-                results.push((filename, deps));
+    scan_manifests(root, "", &mut results)?;
+
+    // If root had no deps but has a Cargo workspace, scan members
+    if results.is_empty() {
+        if let Some(members) = detect_workspace_members(root) {
+            for member in members {
+                let member_path = root.join(&member);
+                if member_path.is_dir() {
+                    scan_manifests(&member_path, &format!("{member}/"), &mut results)?;
+                }
             }
         }
     }
@@ -598,12 +601,122 @@ pub fn run_deps(root: &Path, out: &mut impl Write) -> io::Result<()> {
             write_deps(deps, "", out)?;
         }
         _ => {
-            for (filename, deps) in &results {
-                writeln!(out, "{filename}")?;
+            for (label, deps) in &results {
+                writeln!(out, "{label}")?;
                 write_deps(deps, " ", out)?;
             }
+            analyze_workspace(&results, out)?;
         }
     }
 
     Ok(())
+}
+
+fn analyze_workspace(results: &[(String, Vec<Dep>)], out: &mut impl Write) -> io::Result<()> {
+    // Build map: dep_name → [(manifest, version)]
+    let mut dep_map: HashMap<&str, Vec<(&str, &str)>> = HashMap::new();
+    for (manifest, deps) in results {
+        for dep in deps {
+            dep_map.entry(dep.name.as_str())
+                .or_default()
+                .push((manifest.as_str(), dep.version.as_str()));
+        }
+    }
+
+    // Find shared deps (in 2+ manifests)
+    let mut shared: Vec<(&str, usize)> = dep_map.iter()
+        .filter(|(_, locs)| locs.len() > 1)
+        .map(|(name, locs)| (*name, locs.len()))
+        .collect();
+    shared.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(b.0)));
+
+    // Find version mismatches among shared
+    let mut mismatches: Vec<(&str, &Vec<(&str, &str)>)> = dep_map.iter()
+        .filter(|(_, locs)| {
+            if locs.len() < 2 { return false; }
+            let first = locs[0].1;
+            locs.iter().any(|(_, v)| *v != first)
+        })
+        .map(|(name, locs)| (*name, locs))
+        .collect();
+    mismatches.sort_by(|a, b| a.0.cmp(b.0));
+
+    if shared.is_empty() {
+        return Ok(());
+    }
+
+    writeln!(out, "[shared]")?;
+    for (name, count) in &shared {
+        writeln!(out, " {name} {count}x")?;
+    }
+
+    if !mismatches.is_empty() {
+        writeln!(out, "[mismatch]")?;
+        for (name, locs) in &mismatches {
+            let parts: Vec<String> = locs.iter()
+                .map(|(m, v)| format!("{m}:{v}"))
+                .collect();
+            writeln!(out, " {name} {}", parts.join(" "))?;
+        }
+    }
+
+    Ok(())
+}
+
+fn scan_manifests(dir: &Path, prefix: &str, results: &mut Vec<(String, Vec<Dep>)>) -> io::Result<()> {
+    for &(filename, parser) in MANIFEST_FILES {
+        let path = dir.join(filename);
+        if path.is_file() {
+            let content = fs::read_to_string(&path)?;
+            let deps = parser(&content);
+            if !deps.is_empty() {
+                results.push((format!("{prefix}{filename}"), deps));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn detect_workspace_members(root: &Path) -> Option<Vec<String>> {
+    let cargo_path = root.join("Cargo.toml");
+    let content = fs::read_to_string(&cargo_path).ok()?;
+    let mut in_workspace = false;
+    let mut in_members = false;
+    let mut members = Vec::new();
+
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with('[') {
+            in_workspace = trimmed == "[workspace]";
+            in_members = false;
+            continue;
+        }
+        if in_workspace && trimmed.starts_with("members") && trimmed.contains('[') {
+            in_members = true;
+            // Check inline array
+            if let (Some(start), Some(end)) = (trimmed.find('['), trimmed.rfind(']')) {
+                let items = &trimmed[start + 1..end];
+                for item in items.split(',') {
+                    let m = item.trim().trim_matches('"').trim_matches('\'');
+                    if !m.is_empty() {
+                        members.push(m.to_string());
+                    }
+                }
+                in_members = false;
+            }
+            continue;
+        }
+        if in_members {
+            if trimmed.starts_with(']') {
+                in_members = false;
+                continue;
+            }
+            let m = trimmed.trim_end_matches(',').trim().trim_matches('"').trim_matches('\'');
+            if !m.is_empty() {
+                members.push(m.to_string());
+            }
+        }
+    }
+
+    if members.is_empty() { None } else { Some(members) }
 }

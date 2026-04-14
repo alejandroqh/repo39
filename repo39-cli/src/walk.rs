@@ -203,6 +203,10 @@ fn write_file_line(out: &mut impl Write, depth: usize, info: &EntryInfo, ctx: &W
     if ctx.info.created {
         write!(out, " {}", epoch_to_date(info.created))?;
     }
+    if ctx.info.tokens {
+        let tokens = info.size / 4;
+        write!(out, " ~{tokens}t")?;
+    }
     writeln!(out)
 }
 

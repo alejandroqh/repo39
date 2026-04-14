@@ -28,7 +28,7 @@ pub struct Cli {
     #[arg(short, long, default_value = "n")]
     pub order: String,
 
-    /// Info to display: s=size m=modified c=created g=git (combinable)
+    /// Info to display: s=size m=modified c=created g=git t=tokens (combinable)
     #[arg(short, long, default_value = "")]
     pub info: String,
 
@@ -55,6 +55,30 @@ pub struct Cli {
     /// Show recent file changes (compact git log)
     #[arg(long)]
     pub changes: bool,
+
+    /// Show symbol-level changes between git refs (default: HEAD~1)
+    #[arg(long)]
+    pub review: Option<Option<String>>,
+
+    /// Search file contents for pattern
+    #[arg(long)]
+    pub search: Option<String>,
+
+    /// Context lines around search matches (default: 0)
+    #[arg(long, default_value = "0")]
+    pub context: usize,
+
+    /// File glob filter for search (e.g. "*.rs")
+    #[arg(long)]
+    pub file_filter: Option<String>,
+
+    /// Max search results (default: 50)
+    #[arg(long, default_value = "50")]
+    pub max_results: usize,
+
+    /// Use regex pattern for search
+    #[arg(long)]
+    pub regex: bool,
 }
 
 pub struct ShowFilter {
@@ -105,6 +129,7 @@ pub struct InfoFlags {
     pub modified: bool,
     pub created: bool,
     pub git: bool,
+    pub tokens: bool,
 }
 
 impl InfoFlags {
@@ -114,6 +139,7 @@ impl InfoFlags {
             modified: s.contains('m'),
             created: s.contains('c'),
             git: s.contains('g'),
+            tokens: s.contains('t'),
         };
         match order {
             SortOrder::Size => flags.size = true,
@@ -125,7 +151,7 @@ impl InfoFlags {
     }
 
     pub fn needs_metadata(&self) -> bool {
-        self.size || self.modified || self.created
+        self.size || self.modified || self.created || self.tokens
     }
 }
 

@@ -6,6 +6,8 @@ mod glob;
 mod identify;
 mod map;
 mod mcp;
+mod review;
+mod search;
 mod util;
 mod walk;
 

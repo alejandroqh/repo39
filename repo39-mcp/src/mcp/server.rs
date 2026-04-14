@@ -13,6 +13,8 @@ use crate::git::load_git_dirty;
 use crate::glob::Glob;
 use crate::identify::run_identify;
 use crate::map::run_map;
+use crate::review::run_review;
+use crate::search::run_search;
 use crate::util::canonicalize;
 use crate::walk::{grep_walk, walk, WalkCtx};
 
@@ -31,7 +33,7 @@ impl McpServer {
 
 #[tool_router]
 impl McpServer {
-    #[tool(description = "List directory tree structure. Token-optimized output with configurable depth, filtering, sorting, and file info.")]
+    #[tool(description = "List directory tree. Output: indented lines (1 space/depth), dirs end with /, files plain. Auto-skips .git, node_modules, target, etc.")]
     async fn repo39_tree(
         &self,
         Parameters(params): Parameters<TreeParams>,
@@ -39,7 +41,7 @@ impl McpServer {
         run_tree(params).map_err(|e| e.to_string())
     }
 
-    #[tool(description = "Identify project type(s) with confidence scores. Detects languages, frameworks, and project categories (52 types).")]
+    #[tool(description = "Identify project type(s). Output: one line per match (max 5), format: `name score` (0.00-1.00, descending). Detects languages, frameworks, categories.")]
     async fn repo39_identify(
         &self,
         Parameters(params): Parameters<IdentifyParams>,
@@ -47,7 +49,7 @@ impl McpServer {
         capture(&params.path, run_identify).map_err(|e| e.to_string())
     }
 
-    #[tool(description = "Extract code symbols (functions, structs, classes) from source files. Supports 12+ languages.")]
+    #[tool(description = "Extract code symbols from source files. Output: indented tree (dir/ file symbols). Symbol format: `prefix name` (e.g. `fn foo`, `class Bar`). 13 languages: rs py js ts go java kt rb php c/cpp swift ex dart sh.")]
     async fn repo39_map(
         &self,
         Parameters(params): Parameters<MapParams>,
@@ -55,7 +57,7 @@ impl McpServer {
         run_map_tool(params).map_err(|e| e.to_string())
     }
 
-    #[tool(description = "List project dependencies from manifest files (Cargo.toml, package.json, pyproject.toml, go.mod, Gemfile, composer.json, requirements.txt).")]
+    #[tool(description = "List dependencies from manifest files. Output: `name version [dev]` per line. Supports Cargo.toml, package.json, pyproject.toml, go.mod, Gemfile, composer.json, requirements.txt. Workspace-aware.")]
     async fn repo39_deps(
         &self,
         Parameters(params): Parameters<DepsParams>,
@@ -63,12 +65,28 @@ impl McpServer {
         capture(&params.path, run_deps).map_err(|e| e.to_string())
     }
 
-    #[tool(description = "Show recent file changes from git history. Compact format: time_ago path +insertions -deletions [new|del].")]
+    #[tool(description = "Show recent file changes from git log (last 100 commits, max 50 files). Output: `time_ago path [+ins] [-del] [new|del]`. Requires git repo.")]
     async fn repo39_changes(
         &self,
         Parameters(params): Parameters<ChangesParams>,
     ) -> Result<String, String> {
         capture(&params.path, run_changes).map_err(|e| e.to_string())
+    }
+
+    #[tool(description = "Search file contents. Output: `path:line content` per match. Skips binary/generated files, auto-skips .git, node_modules, target, etc. Groups separated by `--`.")]
+    async fn repo39_search(
+        &self,
+        Parameters(params): Parameters<SearchParams>,
+    ) -> Result<String, String> {
+        run_search_tool(params).map_err(|e| e.to_string())
+    }
+
+    #[tool(description = "Show symbol-level changes between git refs. Output: `path` header then `+symbol:line` (added), `-symbol` (removed), `~symbol:line` (modified). Compares current vs ref_spec (default HEAD~1). Max 20 files.")]
+    async fn repo39_review(
+        &self,
+        Parameters(params): Parameters<ReviewParams>,
+    ) -> Result<String, String> {
+        run_review_tool(params).map_err(|e| e.to_string())
     }
 }
 
@@ -80,11 +98,10 @@ impl ServerHandler for McpServer {
         )
         .with_server_info(Implementation::new("repo39-mcp", env!("CARGO_PKG_VERSION")))
         .with_instructions(
-            "repo39-mcp is a token-optimized repository explorer for AI agents. \
-             Use repo39_tree to list directory structure, repo39_identify to detect project type, \
-             repo39_map to extract code symbols, repo39_deps to list dependencies, \
-             and repo39_changes to show recent git changes. \
-             All output is optimized for minimal token usage.",
+            "Token-optimized repository explorer for AI agents. \
+             Tools: repo39_tree (directory structure), repo39_identify (project type), \
+             repo39_map (code symbols), repo39_deps (dependencies), repo39_changes (git changes), \
+             repo39_search (content search), repo39_review (symbol-level diff).",
         )
     }
 }
@@ -145,5 +162,22 @@ fn run_map_tool(params: MapParams) -> std::io::Result<String> {
     let limit = params.limit.unwrap_or(0);
     let mut buf = Vec::with_capacity(4096);
     run_map(&root, depth, limit, params.grep.as_deref(), &mut buf)?;
+    Ok(String::from_utf8(buf).unwrap_or_default())
+}
+
+fn run_review_tool(params: ReviewParams) -> std::io::Result<String> {
+    let root = canonicalize(std::path::Path::new(&params.path))?;
+    let mut buf = Vec::with_capacity(4096);
+    run_review(&root, params.ref_spec.as_deref(), &mut buf)?;
+    Ok(String::from_utf8(buf).unwrap_or_default())
+}
+
+fn run_search_tool(params: SearchParams) -> std::io::Result<String> {
+    let root = canonicalize(std::path::Path::new(&params.path))?;
+    let is_regex = params.is_regex.unwrap_or(false);
+    let context = params.context.unwrap_or(0);
+    let max_results = params.max_results.unwrap_or(50);
+    let mut buf = Vec::with_capacity(4096);
+    run_search(&root, &params.pattern, is_regex, context, max_results, params.file_glob.as_deref(), &mut buf)?;
     Ok(String::from_utf8(buf).unwrap_or_default())
 }

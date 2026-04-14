@@ -2,7 +2,7 @@
   "mcpServers": {
     "repo39": {
       "type": "stdio",
-      "command": "./target/debug/repo39-mcp",
+      "command": "./dist/repo39-mcp-macos-arm64",
       "args": []
     }
   }

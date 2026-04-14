@@ -6,7 +6,7 @@ pub struct TreeParams {
     /// Target directory path (relative or absolute)
     pub path: String,
 
-    /// Max depth (0=root only, default: 0)
+    /// Max depth (0=root only, default: 0). Use large N (e.g. 99) for full tree.
     #[serde(default)]
     pub depth: Option<usize>,
 
@@ -14,15 +14,15 @@ pub struct TreeParams {
     #[serde(default)]
     pub show: Option<String>,
 
-    /// Sort: n=name s=size m=modified c=created (default: n)
+    /// Sort: n=name s=size m=modified c=created (default: n). s/m/c auto-enables corresponding info.
     #[serde(default)]
     pub order: Option<String>,
 
-    /// Info to display: s=size m=modified c=created g=git (combinable)
+    /// Info to display: s=size m=modified c=created g=git t=tokens (combinable)
     #[serde(default)]
     pub info: Option<String>,
 
-    /// Max files per directory (0=unlimited)
+    /// Max entries per directory, 0=unlimited. Only applies below root.
     #[serde(default)]
     pub limit: Option<usize>,
 
@@ -65,4 +65,39 @@ pub struct DepsParams {
 pub struct ChangesParams {
     /// Target directory path (relative or absolute)
     pub path: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct ReviewParams {
+    /// Target directory path (relative or absolute)
+    pub path: String,
+
+    /// Git ref to diff against (default: HEAD~1). Examples: HEAD~3, main, abc1234
+    #[serde(default)]
+    pub ref_spec: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct SearchParams {
+    /// Target directory path (relative or absolute)
+    pub path: String,
+
+    /// Search pattern (literal string or regex)
+    pub pattern: String,
+
+    /// Treat pattern as regex (default: false)
+    #[serde(default)]
+    pub is_regex: Option<bool>,
+
+    /// Context lines around each match (default: 0)
+    #[serde(default)]
+    pub context: Option<usize>,
+
+    /// Max matches to return (default: 50, 0=unlimited)
+    #[serde(default)]
+    pub max_results: Option<usize>,
+
+    /// Filter files by name glob (e.g. "*.rs", "*.toml")
+    #[serde(default)]
+    pub file_glob: Option<String>,
 }

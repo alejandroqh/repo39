@@ -5,6 +5,8 @@ mod git;
 mod glob;
 mod identify;
 mod map;
+mod review;
+mod search;
 mod util;
 mod walk;
 
@@ -20,6 +22,8 @@ use git::load_git_dirty;
 use glob::Glob;
 use identify::run_identify;
 use map::run_map;
+use review::run_review;
+use search::run_search;
 use util::canonicalize;
 use walk::{grep_walk, walk, WalkCtx};
 
@@ -30,7 +34,9 @@ fn main() -> io::Result<()> {
     let stdout = io::stdout();
     let mut out = BufWriter::new(stdout.lock());
 
-    let standalone_count = [cli.identify, cli.map, cli.deps, cli.changes]
+    let has_search = cli.search.is_some();
+    let has_review = cli.review.is_some();
+    let standalone_count = [cli.identify, cli.map, cli.deps, cli.changes, has_search, has_review]
         .iter().filter(|&&b| b).count();
 
     if standalone_count > 0 {
@@ -55,6 +61,23 @@ fn main() -> io::Result<()> {
         let map_depth = cli.depth.unwrap_or(99);
         section!(cli.map, "map", |root: &std::path::Path, out: &mut _| run_map(root, map_depth, cli.limit, cli.grep.as_deref(), out));
         section!(cli.changes, "changes", |root: &std::path::Path, out: &mut _| run_changes(root, out));
+        if let Some(ref pattern) = cli.search {
+            if multi {
+                if sect > 0 { writeln!(out)?; }
+                writeln!(out, "[search]")?;
+            }
+            run_search(&dir_buf, pattern, cli.regex, cli.context, cli.max_results, cli.file_filter.as_deref(), &mut out)?;
+            sect += 1;
+        }
+        if let Some(ref review_ref) = cli.review {
+            if multi {
+                if sect > 0 { writeln!(out)?; }
+                writeln!(out, "[review]")?;
+            }
+            let ref_spec = review_ref.as_deref();
+            run_review(&dir_buf, ref_spec, &mut out)?;
+            sect += 1;
+        }
         let _ = sect;
 
         return Ok(());

@@ -78,6 +78,30 @@ fn scan_depth1(root: &Path, dir_name: &str, data: &mut ScanData) -> io::Result<(
 
         if ft.is_file() {
             count_ext(&name_str, &mut data.ext_counts);
+        } else if ft.is_dir() && !SKIP_INTERIOR.contains(&name_str.as_str()) {
+            scan_depth2(&dir_path, &name_str, data)?;
+        }
+    }
+
+    Ok(())
+}
+
+fn scan_depth2(parent: &Path, dir_name: &str, data: &mut ScanData) -> io::Result<()> {
+    let dir_path = parent.join(dir_name);
+    let entries = match fs::read_dir(&dir_path) {
+        Ok(rd) => rd,
+        Err(_) => return Ok(()),
+    };
+
+    for entry in entries.filter_map(|e| e.ok()) {
+        let ft = match entry.file_type() {
+            Ok(ft) => ft,
+            Err(_) => continue,
+        };
+        if ft.is_file() {
+            if let Some(name) = entry.file_name().to_str() {
+                count_ext(name, &mut data.ext_counts);
+            }
         }
     }
 
@@ -114,19 +138,19 @@ fn score_marker(marker: &Marker, data: &ScanData) -> f64 {
     }
 }
 
-fn score_all(data: &ScanData) -> Vec<(&'static str, f64)> {
+fn score_all(data: &ScanData) -> Vec<(&'static str, &'static str, f64)> {
     let db = fingerprints();
-    let mut results: Vec<(&str, f64)> = db
+    let mut results: Vec<(&str, &str, f64)> = db
         .iter()
-        .map(|(name, markers)| {
+        .map(|(name, cat, markers)| {
             let raw: f64 = markers.iter().map(|m| score_marker(m, data)).sum();
-            (*name, raw.min(1.0))
+            (*name, *cat, raw.min(1.0))
         })
-        .filter(|(_, c)| *c > 0.0)
+        .filter(|(_, _, c)| *c > 0.0)
         .collect();
 
     results.sort_by(|a, b| {
-        b.1.partial_cmp(&a.1)
+        b.2.partial_cmp(&a.2)
             .unwrap_or(std::cmp::Ordering::Equal)
             .then_with(|| a.0.cmp(b.0))
     });
@@ -137,17 +161,17 @@ fn score_all(data: &ScanData) -> Vec<(&'static str, f64)> {
 pub fn run_identify(root: &Path, out: &mut impl Write) -> io::Result<()> {
     let data = scan(root)?;
     let results = score_all(&data);
-    for (name, confidence) in &results {
-        writeln!(out, "{name} {confidence:.2}")?;
+    for (name, cat, confidence) in &results {
+        writeln!(out, "{name} {cat} {confidence:.2}")?;
     }
     Ok(())
 }
 
-fn fingerprints() -> &'static [(&'static str, &'static [Marker])] {
+fn fingerprints() -> &'static [(&'static str, &'static str, &'static [Marker])] {
     use Marker::*;
     &[
         // ── Languages (22) ──────────────────────────────────────────────
-        ("rust", &[
+        ("rust", "lang", &[
             File("Cargo.toml", 0.45),
             File("Cargo.lock", 0.15),
             Path("src/main.rs", 0.10),
@@ -157,7 +181,7 @@ fn fingerprints() -> &'static [(&'static str, &'static [Marker])] {
             File("rustfmt.toml", 0.03),
             Dir(".cargo", 0.02),
         ]),
-        ("javascript", &[
+        ("javascript", "lang", &[
             File("package.json", 0.35),
             Ext("js", 0.30),
             Ext("mjs", 0.10),
@@ -166,14 +190,14 @@ fn fingerprints() -> &'static [(&'static str, &'static [Marker])] {
             Dir("node_modules", 0.05),
             File("webpack.config.js", 0.05),
         ]),
-        ("typescript", &[
+        ("typescript", "lang", &[
             File("tsconfig.json", 0.45),
             Ext("ts", 0.30),
             Ext("tsx", 0.15),
             File("package.json", 0.05),
             File("tslint.json", 0.05),
         ]),
-        ("python", &[
+        ("python", "lang", &[
             File("pyproject.toml", 0.30),
             File("setup.py", 0.25),
             File("requirements.txt", 0.20),
@@ -185,7 +209,7 @@ fn fingerprints() -> &'static [(&'static str, &'static [Marker])] {
             Dir("venv", 0.03),
             Dir(".venv", 0.03),
         ]),
-        ("java", &[
+        ("java", "lang", &[
             File("pom.xml", 0.40),
             File("build.gradle", 0.40),
             Ext("java", 0.30),
@@ -193,14 +217,14 @@ fn fingerprints() -> &'static [(&'static str, &'static [Marker])] {
             File("gradlew", 0.08),
             File("mvnw", 0.08),
         ]),
-        ("kotlin", &[
+        ("kotlin", "lang", &[
             Ext("kt", 0.35),
             File("build.gradle.kts", 0.30),
             File("settings.gradle.kts", 0.15),
             Ext("kts", 0.10),
             File("gradlew", 0.08),
         ]),
-        ("go", &[
+        ("go", "lang", &[
             File("go.mod", 0.50),
             File("go.sum", 0.15),
             Ext("go", 0.30),
@@ -208,14 +232,14 @@ fn fingerprints() -> &'static [(&'static str, &'static [Marker])] {
             Dir("pkg", 0.05),
             Dir("internal", 0.05),
         ]),
-        ("swift", &[
+        ("swift", "lang", &[
             File("Package.swift", 0.45),
             Ext("swift", 0.35),
             Dir("Sources", 0.10),
             Dir("Tests", 0.05),
             File(".swiftlint.yml", 0.05),
         ]),
-        ("ruby", &[
+        ("ruby", "lang", &[
             File("Gemfile", 0.40),
             Ext("rb", 0.30),
             File("Rakefile", 0.10),
@@ -223,21 +247,21 @@ fn fingerprints() -> &'static [(&'static str, &'static [Marker])] {
             File("Gemfile.lock", 0.08),
             Dir("spec", 0.05),
         ]),
-        ("php", &[
+        ("php", "lang", &[
             File("composer.json", 0.45),
             Ext("php", 0.35),
             File("composer.lock", 0.08),
             File("artisan", 0.10),
             Dir("vendor", 0.05),
         ]),
-        ("c", &[
+        ("c", "lang", &[
             Ext("c", 0.35),
             Ext("h", 0.25),
             File("Makefile", 0.12),
             File("CMakeLists.txt", 0.20),
             File("configure", 0.10),
         ]),
-        ("cpp", &[
+        ("cpp", "lang", &[
             Ext("cpp", 0.30),
             Ext("hpp", 0.15),
             Ext("cc", 0.12),
@@ -246,60 +270,60 @@ fn fingerprints() -> &'static [(&'static str, &'static [Marker])] {
             File("conanfile.txt", 0.08),
             File("vcpkg.json", 0.08),
         ]),
-        ("csharp", &[
+        ("csharp", "lang", &[
             Ext("cs", 0.35),
             Ext("sln", 0.25),
             Ext("csproj", 0.20),
             File("global.json", 0.08),
             File("nuget.config", 0.05),
         ]),
-        ("dart", &[
+        ("dart", "lang", &[
             File("pubspec.yaml", 0.50),
             Ext("dart", 0.30),
             Dir("lib", 0.08),
             File("pubspec.lock", 0.05),
             File("analysis_options.yaml", 0.05),
         ]),
-        ("elixir", &[
+        ("elixir", "lang", &[
             File("mix.exs", 0.50),
             Ext("ex", 0.25),
             Ext("exs", 0.12),
             Dir("lib", 0.08),
             File("mix.lock", 0.05),
         ]),
-        ("zig", &[
+        ("zig", "lang", &[
             File("build.zig", 0.50),
             Ext("zig", 0.35),
             File("build.zig.zon", 0.12),
             Dir("src", 0.05),
         ]),
-        ("haskell", &[
+        ("haskell", "lang", &[
             File("stack.yaml", 0.30),
             Ext("hs", 0.35),
             Ext("cabal", 0.20),
             File("Setup.hs", 0.08),
             Dir("app", 0.05),
         ]),
-        ("scala", &[
+        ("scala", "lang", &[
             File("build.sbt", 0.45),
             Ext("scala", 0.30),
             Dir("project", 0.10),
             Ext("sc", 0.08),
         ]),
-        ("lua", &[
+        ("lua", "lang", &[
             Ext("lua", 0.45),
             File("init.lua", 0.18),
             File(".luacheckrc", 0.12),
             Dir("lua", 0.08),
         ]),
-        ("perl", &[
+        ("perl", "lang", &[
             Ext("pl", 0.30),
             Ext("pm", 0.20),
             File("Makefile.PL", 0.18),
             File("cpanfile", 0.15),
             Dir("t", 0.08),
         ]),
-        ("r", &[
+        ("r", "lang", &[
             File("DESCRIPTION", 0.25),
             Ext("R", 0.30),
             Ext("Rmd", 0.12),
@@ -307,7 +331,7 @@ fn fingerprints() -> &'static [(&'static str, &'static [Marker])] {
             Dir("R", 0.08),
             File(".Rprofile", 0.08),
         ]),
-        ("shell", &[
+        ("shell", "lang", &[
             Ext("sh", 0.35),
             Ext("bash", 0.18),
             Ext("zsh", 0.12),
@@ -317,7 +341,7 @@ fn fingerprints() -> &'static [(&'static str, &'static [Marker])] {
         ]),
 
         // ── Frameworks (18) ────────────────────────────────────────────
-        ("react", &[
+        ("react", "framework", &[
             Ext("jsx", 0.35),
             Ext("tsx", 0.20),
             Path("src/App.jsx", 0.15),
@@ -325,14 +349,14 @@ fn fingerprints() -> &'static [(&'static str, &'static [Marker])] {
             Dir("public", 0.08),
             File("package.json", 0.05),
         ]),
-        ("vuejs", &[
+        ("vuejs", "framework", &[
             Ext("vue", 0.45),
             Path("src/App.vue", 0.18),
             File("vue.config.js", 0.15),
             File("vite.config.ts", 0.08),
             File("package.json", 0.05),
         ]),
-        ("nextjs", &[
+        ("nextjs", "framework", &[
             File("next.config.js", 0.40),
             File("next.config.mjs", 0.40),
             File("next.config.ts", 0.40),
@@ -340,28 +364,28 @@ fn fingerprints() -> &'static [(&'static str, &'static [Marker])] {
             Dir("app", 0.10),
             Dir(".next", 0.08),
         ]),
-        ("nuxtjs", &[
+        ("nuxtjs", "framework", &[
             File("nuxt.config.ts", 0.45),
             File("nuxt.config.js", 0.45),
             Dir("pages", 0.12),
             Dir("layouts", 0.08),
             Dir(".nuxt", 0.08),
         ]),
-        ("angular", &[
+        ("angular", "framework", &[
             File("angular.json", 0.50),
             File("tsconfig.app.json", 0.12),
             Path("src/main.ts", 0.08),
             Dir("e2e", 0.08),
             File("package.json", 0.05),
         ]),
-        ("svelte", &[
+        ("svelte", "framework", &[
             File("svelte.config.js", 0.40),
             File("svelte.config.ts", 0.40),
             Ext("svelte", 0.35),
             Path("src/app.html", 0.08),
             Dir("routes", 0.08),
         ]),
-        ("django", &[
+        ("django", "framework", &[
             File("manage.py", 0.40),
             Dir("templates", 0.15),
             File("urls.py", 0.10),
@@ -369,14 +393,14 @@ fn fingerprints() -> &'static [(&'static str, &'static [Marker])] {
             File("settings.py", 0.12),
             Ext("py", 0.08),
         ]),
-        ("flask", &[
+        ("flask", "framework", &[
             File("app.py", 0.25),
             Dir("templates", 0.18),
             Dir("static", 0.12),
             File("requirements.txt", 0.08),
             Ext("py", 0.12),
         ]),
-        ("fastapi", &[
+        ("fastapi", "framework", &[
             File("main.py", 0.20),
             Dir("routers", 0.18),
             File("alembic.ini", 0.12),
@@ -384,7 +408,7 @@ fn fingerprints() -> &'static [(&'static str, &'static [Marker])] {
             Ext("py", 0.12),
             File("requirements.txt", 0.05),
         ]),
-        ("rails", &[
+        ("rails", "framework", &[
             File("config.ru", 0.20),
             File("Gemfile", 0.15),
             Dir("app", 0.12),
@@ -393,7 +417,7 @@ fn fingerprints() -> &'static [(&'static str, &'static [Marker])] {
             Path("config/routes.rb", 0.12),
             Ext("rb", 0.08),
         ]),
-        ("spring", &[
+        ("spring", "framework", &[
             File("application.properties", 0.20),
             File("application.yml", 0.20),
             File("pom.xml", 0.15),
@@ -401,7 +425,7 @@ fn fingerprints() -> &'static [(&'static str, &'static [Marker])] {
             Ext("java", 0.10),
             File("gradlew", 0.05),
         ]),
-        ("flutter", &[
+        ("flutter", "framework", &[
             File("pubspec.yaml", 0.25),
             Dir("android", 0.15),
             Dir("ios", 0.15),
@@ -409,14 +433,14 @@ fn fingerprints() -> &'static [(&'static str, &'static [Marker])] {
             Path("lib/main.dart", 0.12),
             File(".flutter-plugins", 0.08),
         ]),
-        ("tauri", &[
+        ("tauri", "framework", &[
             Dir("src-tauri", 0.50),
             File("tauri.conf.json", 0.15),
             File("Cargo.toml", 0.08),
             File("package.json", 0.05),
             Ext("ts", 0.05),
         ]),
-        ("electron", &[
+        ("electron", "framework", &[
             File("electron-builder.yml", 0.30),
             File("forge.config.js", 0.25),
             File("electron.config.js", 0.12),
@@ -424,7 +448,7 @@ fn fingerprints() -> &'static [(&'static str, &'static [Marker])] {
             Path("src/preload.ts", 0.12),
             File("package.json", 0.05),
         ]),
-        ("express", &[
+        ("express", "framework", &[
             Dir("routes", 0.18),
             File("app.js", 0.18),
             File("server.js", 0.12),
@@ -432,21 +456,21 @@ fn fingerprints() -> &'static [(&'static str, &'static [Marker])] {
             Dir("controllers", 0.10),
             File("package.json", 0.05),
         ]),
-        ("nestjs", &[
+        ("nestjs", "framework", &[
             File("nest-cli.json", 0.45),
             Path("src/app.module.ts", 0.18),
             File("tsconfig.build.json", 0.08),
             Path("src/main.ts", 0.08),
             File("package.json", 0.05),
         ]),
-        ("remix", &[
+        ("remix", "framework", &[
             File("remix.config.js", 0.40),
             File("remix.config.ts", 0.40),
             Path("app/root.tsx", 0.18),
             Path("app/entry.server.tsx", 0.12),
             Dir("routes", 0.08),
         ]),
-        ("astro", &[
+        ("astro", "framework", &[
             File("astro.config.mjs", 0.40),
             File("astro.config.ts", 0.40),
             Ext("astro", 0.30),
@@ -455,7 +479,7 @@ fn fingerprints() -> &'static [(&'static str, &'static [Marker])] {
         ]),
 
         // ── Non-code (12) ──────────────────────────────────────────────
-        ("docs", &[
+        ("docs", "non-code", &[
             Dir("docs", 0.30),
             File("mkdocs.yml", 0.22),
             File("docusaurus.config.js", 0.22),
@@ -463,14 +487,14 @@ fn fingerprints() -> &'static [(&'static str, &'static [Marker])] {
             Ext("md", 0.18),
             Ext("rst", 0.15),
         ]),
-        ("markdown", &[
+        ("markdown", "non-code", &[
             Ext("md", 0.40),
             Ext("mdx", 0.18),
             File("README.md", 0.12),
             File("CONTRIBUTING.md", 0.08),
             File("CHANGELOG.md", 0.08),
         ]),
-        ("images", &[
+        ("images", "non-code", &[
             Ext("png", 0.18),
             Ext("jpg", 0.18),
             Ext("jpeg", 0.12),
@@ -480,7 +504,7 @@ fn fingerprints() -> &'static [(&'static str, &'static [Marker])] {
             Dir("images", 0.10),
             Dir("assets", 0.08),
         ]),
-        ("video", &[
+        ("video", "non-code", &[
             Ext("mp4", 0.25),
             Ext("mkv", 0.18),
             Ext("mov", 0.18),
@@ -488,7 +512,7 @@ fn fingerprints() -> &'static [(&'static str, &'static [Marker])] {
             Ext("webm", 0.12),
             Dir("videos", 0.08),
         ]),
-        ("audio", &[
+        ("audio", "non-code", &[
             Ext("mp3", 0.25),
             Ext("wav", 0.18),
             Ext("flac", 0.18),
@@ -496,7 +520,7 @@ fn fingerprints() -> &'static [(&'static str, &'static [Marker])] {
             Ext("aac", 0.10),
             Dir("audio", 0.08),
         ]),
-        ("data", &[
+        ("data", "non-code", &[
             Ext("csv", 0.18),
             Ext("sql", 0.15),
             Ext("json", 0.12),
@@ -506,7 +530,7 @@ fn fingerprints() -> &'static [(&'static str, &'static [Marker])] {
             Dir("data", 0.12),
             Dir("datasets", 0.08),
         ]),
-        ("config", &[
+        ("config", "non-code", &[
             File("Dockerfile", 0.15),
             File("docker-compose.yml", 0.12),
             File("docker-compose.yaml", 0.12),
@@ -516,7 +540,7 @@ fn fingerprints() -> &'static [(&'static str, &'static [Marker])] {
             Ext("toml", 0.08),
             Ext("yaml", 0.08),
         ]),
-        ("devops", &[
+        ("devops", "non-code", &[
             Dir(".github", 0.15),
             File("Dockerfile", 0.15),
             File("docker-compose.yml", 0.12),
@@ -527,7 +551,7 @@ fn fingerprints() -> &'static [(&'static str, &'static [Marker])] {
             Dir("k8s", 0.10),
             Dir("helm", 0.08),
         ]),
-        ("monorepo", &[
+        ("monorepo", "non-code", &[
             File("lerna.json", 0.30),
             File("pnpm-workspace.yaml", 0.30),
             File("turbo.json", 0.30),
@@ -535,7 +559,7 @@ fn fingerprints() -> &'static [(&'static str, &'static [Marker])] {
             Dir("packages", 0.20),
             Dir("apps", 0.15),
         ]),
-        ("latex", &[
+        ("latex", "non-code", &[
             Ext("tex", 0.40),
             Ext("bib", 0.12),
             Ext("sty", 0.08),
@@ -544,7 +568,7 @@ fn fingerprints() -> &'static [(&'static str, &'static [Marker])] {
             Dir("figures", 0.08),
             Dir("chapters", 0.08),
         ]),
-        ("design", &[
+        ("design", "non-code", &[
             Ext("psd", 0.18),
             Ext("sketch", 0.15),
             Ext("fig", 0.12),
@@ -554,7 +578,7 @@ fn fingerprints() -> &'static [(&'static str, &'static [Marker])] {
             Dir("mockups", 0.10),
             Ext("eps", 0.08),
         ]),
-        ("gamedev", &[
+        ("gamedev", "non-code", &[
             File("project.godot", 0.30),
             Ext("gd", 0.20),
             Ext("tscn", 0.15),

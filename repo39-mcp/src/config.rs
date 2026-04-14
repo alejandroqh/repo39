@@ -46,6 +46,7 @@ pub struct InfoFlags {
     pub modified: bool,
     pub created: bool,
     pub git: bool,
+    pub tokens: bool,
 }
 
 impl InfoFlags {
@@ -55,6 +56,7 @@ impl InfoFlags {
             modified: s.contains('m'),
             created: s.contains('c'),
             git: s.contains('g'),
+            tokens: s.contains('t'),
         };
         match order {
             SortOrder::Size => flags.size = true,
@@ -66,7 +68,7 @@ impl InfoFlags {
     }
 
     pub fn needs_metadata(&self) -> bool {
-        self.size || self.modified || self.created
+        self.size || self.modified || self.created || self.tokens
     }
 }
 
@@ -78,7 +80,6 @@ pub enum SizeUnit {
     G,
 }
 
-#[allow(dead_code)]
 impl SizeUnit {
     pub fn parse(s: &str) -> Self {
         match s.chars().next().unwrap_or('K') {
@@ -107,4 +108,3 @@ impl SizeUnit {
         }
     }
 }
-

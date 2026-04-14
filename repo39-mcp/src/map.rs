@@ -9,8 +9,8 @@ use regex::Regex;
 use crate::glob::Glob;
 use crate::util::{is_hidden, should_skip};
 
-struct LangPatterns {
-    extensions: &'static [&'static str],
+pub(crate) struct LangPatterns {
+    pub(crate) extensions: &'static [&'static str],
     regexes: Vec<Regex>,
 }
 
@@ -112,20 +112,28 @@ fn lang(extensions: &'static [&'static str], patterns: &[&str]) -> LangPatterns 
     }
 }
 
-fn find_lang(ext: &str) -> Option<&'static LangPatterns> {
+pub(crate) fn find_lang(ext: &str) -> Option<&'static LangPatterns> {
     LANGUAGES.iter().find(|l| l.extensions.contains(&ext))
 }
 
-fn extract_symbols(path: &Path, lang: &LangPatterns) -> io::Result<Vec<String>> {
+pub(crate) fn extract_symbols(path: &Path, lang: &LangPatterns) -> io::Result<Vec<(String, usize)>> {
     let file = fs::File::open(path)?;
-    let reader = BufReader::new(file);
+    Ok(extract_symbols_inner(BufReader::new(file), lang))
+}
+
+pub(crate) fn extract_symbols_from_bytes(content: &[u8], lang: &LangPatterns) -> Vec<(String, usize)> {
+    extract_symbols_inner(content, lang)
+}
+
+fn extract_symbols_inner(reader: impl BufRead, lang: &LangPatterns) -> Vec<(String, usize)> {
     let mut symbols = Vec::new();
     let mut seen = HashSet::new();
+    let is_go = lang.extensions.contains(&"go");
 
-    for line in reader.lines() {
+    for (idx, line) in reader.lines().enumerate() {
         let line = match line {
             Ok(l) => l,
-            Err(_) => return Ok(symbols), // binary file or encoding error — stop
+            Err(_) => return symbols, // binary file or encoding error — stop
         };
         for re in &lang.regexes {
             if let Some(caps) = re.captures(&line) {
@@ -134,10 +142,14 @@ fn extract_symbols(path: &Path, lang: &LangPatterns) -> io::Result<Vec<String>> 
                     if name.len() < 2 {
                         break; // skip single-char symbols (noise)
                     }
-                    let prefix = symbol_prefix(&line);
-                    let full = format!("{prefix}{name}");
+                    let (prefix, mut is_pub) = symbol_prefix(&line);
+                    if is_go && is_go_exported(name) {
+                        is_pub = true;
+                    }
+                    let vis = if is_pub { "+" } else { "" };
+                    let full = format!("{vis}{prefix}{name}");
                     if seen.insert(full.clone()) {
-                        symbols.push(full);
+                        symbols.push((full, idx + 1));
                     }
                 }
                 break; // first matching pattern wins for this line
@@ -145,63 +157,90 @@ fn extract_symbols(path: &Path, lang: &LangPatterns) -> io::Result<Vec<String>> 
         }
     }
 
-    Ok(symbols)
+    symbols
 }
 
-/// Extract a compact keyword prefix from the line. Uses starts_with ordered
-/// longest-first within each family to avoid false matches (e.g. "default" vs "def").
-fn symbol_prefix(line: &str) -> &'static str {
+/// Extract a compact keyword prefix and visibility from the line.
+/// Returns (prefix, is_public). Uses starts_with ordered longest-first
+/// within each family to avoid false matches (e.g. "default" vs "def").
+fn symbol_prefix(line: &str) -> (&'static str, bool) {
     let trimmed = line.trim_start();
-    for (kw, prefix) in &[
-        ("export default function ", "fn "),
-        ("export default class ", "class "),
-        ("export function ", "fn "),
-        ("export class ", "class "),
-        ("export interface ", "interface "),
-        ("export type ", "type "),
-        ("export const ", "const "),
-        ("defmodule ", "defmodule "),
-        ("defp ", "defp "),
-        ("def ", "def "),
-        ("pub fn ", "fn "),
-        ("fn ", "fn "),
-        ("pub struct ", "struct "),
-        ("struct ", "struct "),
-        ("pub enum ", "enum "),
-        ("enum ", "enum "),
-        ("pub trait ", "trait "),
-        ("trait ", "trait "),
-        ("impl ", "impl "),
-        ("interface ", "interface "),
-        ("type ", "type "),
-        ("class ", "class "),
-        ("mixin ", "mixin "),
-        ("extension ", "extension "),
-        ("typedef ", "typedef "),
-        ("void ", "fn "),
-        ("static void ", "fn "),
-        ("static Future", "fn "),
-        ("Future", "fn "),
-        ("String ", "fn "),
-        ("int ", "fn "),
-        ("double ", "fn "),
-        ("bool ", "fn "),
-        ("List", "fn "),
-        ("Map", "fn "),
-        ("Widget ", "fn "),
-        ("dynamic ", "fn "),
-        ("State", "fn "),
-        ("module ", "module "),
-        ("protocol ", "protocol "),
-        ("func ", "fn "),
-        ("function ", "fn "),
-        ("const ", "const "),
+    // (keyword, prefix, is_public)
+    for &(kw, prefix, vis) in &[
+        ("export default function ", "fn ", true),
+        ("export default class ", "class ", true),
+        ("export function ", "fn ", true),
+        ("export class ", "class ", true),
+        ("export interface ", "interface ", true),
+        ("export type ", "type ", true),
+        ("export const ", "const ", true),
+        ("defmodule ", "defmodule ", false),
+        ("defp ", "defp ", false),
+        ("def ", "def ", false),
+        ("pub(crate) fn ", "fn ", false),
+        ("pub fn ", "fn ", true),
+        ("fn ", "fn ", false),
+        ("pub(crate) struct ", "struct ", false),
+        ("pub struct ", "struct ", true),
+        ("struct ", "struct ", false),
+        ("pub(crate) enum ", "enum ", false),
+        ("pub enum ", "enum ", true),
+        ("enum ", "enum ", false),
+        ("pub(crate) trait ", "trait ", false),
+        ("pub trait ", "trait ", true),
+        ("trait ", "trait ", false),
+        ("impl ", "impl ", false),
+        ("interface ", "interface ", false),
+        ("type ", "type ", false),
+        ("class ", "class ", false),
+        ("mixin ", "mixin ", false),
+        ("extension ", "extension ", false),
+        ("typedef ", "typedef ", false),
+        ("public static void ", "fn ", true),
+        ("public static ", "fn ", true),
+        ("public void ", "fn ", true),
+        ("public class ", "class ", true),
+        ("public interface ", "interface ", true),
+        ("public enum ", "enum ", true),
+        ("private ", "fn ", false),
+        ("protected ", "fn ", false),
+        ("static void ", "fn ", false),
+        ("static Future", "fn ", false),
+        ("void ", "fn ", false),
+        ("Future", "fn ", false),
+        ("String ", "fn ", false),
+        ("int ", "fn ", false),
+        ("double ", "fn ", false),
+        ("bool ", "fn ", false),
+        ("List", "fn ", false),
+        ("Map", "fn ", false),
+        ("Widget ", "fn ", false),
+        ("dynamic ", "fn ", false),
+        ("State", "fn ", false),
+        ("open func ", "fn ", true),
+        ("open class ", "class ", true),
+        ("open struct ", "struct ", true),
+        ("open protocol ", "protocol ", true),
+        ("open enum ", "enum ", true),
+        ("public func ", "fn ", true),
+        ("public struct ", "struct ", true),
+        ("public protocol ", "protocol ", true),
+        ("module ", "module ", false),
+        ("protocol ", "protocol ", false),
+        ("func ", "fn ", false),
+        ("function ", "fn ", false),
+        ("const ", "const ", false),
     ] {
         if trimmed.starts_with(kw) {
-            return prefix;
+            return (prefix, vis);
         }
     }
-    ""
+    ("", false)
+}
+
+/// For Go: exported symbols start with uppercase letter.
+fn is_go_exported(name: &str) -> bool {
+    name.chars().next().map_or(false, |c| c.is_uppercase())
 }
 
 fn collect_files(
@@ -266,7 +305,7 @@ pub fn run_map(
     let glob = grep.map(Glob::compile);
 
     // Collect files that have symbols (after grep filtering)
-    let mut results: Vec<(&str, Vec<String>)> = Vec::new();
+    let mut results: Vec<(&str, Vec<(String, usize)>)> = Vec::new();
     for (rel, path) in &files {
         let ext = match path.extension().and_then(|e| e.to_str()) {
             Some(e) => e,
@@ -281,8 +320,8 @@ pub fn run_map(
             continue;
         }
 
-        let filtered: Vec<String> = match &glob {
-            Some(g) => symbols.into_iter().filter(|s| {
+        let filtered: Vec<(String, usize)> = match &glob {
+            Some(g) => symbols.into_iter().filter(|(s, _)| {
                 let name = s.split_whitespace().last().unwrap_or(s);
                 g.matches(name)
             }).collect(),
@@ -326,14 +365,14 @@ pub fn run_map(
 
         writeln!(out, "{file_indent}{filename}")?;
         if limit > 0 && symbols.len() > limit {
-            for sym in &symbols[..limit] {
-                writeln!(out, "{sym_indent}{sym}")?;
+            for (sym, line) in &symbols[..limit] {
+                writeln!(out, "{sym_indent}{sym}:{line}")?;
             }
             let hidden = symbols.len() - limit;
             writeln!(out, "{sym_indent}...+{hidden}")?;
         } else {
-            for sym in symbols {
-                writeln!(out, "{sym_indent}{sym}")?;
+            for (sym, line) in symbols {
+                writeln!(out, "{sym_indent}{sym}:{line}")?;
             }
         }
     }

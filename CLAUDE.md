@@ -27,23 +27,27 @@ CLI flags:
 - `-s <chars>` — show filter: `f`=files `d`=dirs `h`=hidden `c`=count `a`=all (default: `fd`)
 - `-d <N>` — max depth: `0`=root only (default), `1`=root+one level, large N=unlimited
 - `-o <char>` — sort: `n`=name `s`=size `m`=modified `c`=created
-- `-i <chars>` — info: `s`=size `m`=modified `c`=created `g`=git
+- `-i <chars>` — info: `s`=size `m`=modified `c`=created `g`=git `t`=tokens
 - `-n <N>` — max files per directory
 - `-g <glob>` — grep files by name glob
 - `--identify` — detect project type(s) with confidence scores
 - `--map` — extract code symbols (functions, structs, classes)
 - `--deps` — list dependencies from manifest files
 - `--changes` — show recent git changes
+- `--search <pattern>` — search file contents (with `--regex`, `--context N`, `--file-filter`, `--max-results`)
+- `--review [ref]` — symbol-level diff vs git ref (default: HEAD~1)
 
 ### repo39-mcp
 MCP server using `rmcp` (TurboMCP). Runs over stdio transport.
 
-Exposes 5 tools:
-- `repo39_tree` — directory tree listing
-- `repo39_identify` — project type detection
-- `repo39_map` — code symbol extraction
-- `repo39_deps` — dependency parsing
+Exposes 7 tools:
+- `repo39_tree` — directory tree listing (info flag `t` for token estimates)
+- `repo39_identify` — project type detection (with category: lang/framework/non-code)
+- `repo39_map` — code symbol extraction (with line numbers and visibility markers)
+- `repo39_deps` — dependency parsing (workspace-aware with shared/mismatch analysis)
 - `repo39_changes` — git change log
+- `repo39_search` — token-compact content search (skips binary, supports regex)
+- `repo39_review` — symbol-level diff between git refs
 
 Configured as local MCP server via `.mcp.json`. Use the repo39 MCP tools to test the project.
 
