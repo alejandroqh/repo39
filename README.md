@@ -13,7 +13,7 @@ cargo install --path .
 ## Quick Reference
 
 ```
-repo39 <path> [-s fdhca] [-d N] [-n N] [-g glob] [-o nscm] [-i smcgt] [-u KMG]
+repo39-cli <path> [-s fdhca] [-d N] [-n N] [-g glob] [-o nscm] [-i smcgt] [-u KMG]
               [--identify] [--map] [--calls] [--deps] [--changes] [--summary]
               [--search <pat> [--regex] [--context N] [--file-filter glob] [--max-results N]]
               [--review [ref]]
@@ -65,7 +65,7 @@ fn bar:20 -> baz, qux   call graph (--map --calls)
 ### 1. Identify the project
 
 ```bash
-repo39 /project --identify
+repo39-cli /project --identify
 ```
 ```
 rust 0.85
@@ -78,7 +78,7 @@ docs 0.12
 ### 2. Read dependencies
 
 ```bash
-repo39 /project --deps
+repo39-cli /project --deps
 ```
 ```
 clap 4
@@ -94,7 +94,7 @@ Parses: Cargo.toml, package.json, pyproject.toml, requirements.txt, go.mod, Gemf
 
 Symbols include line numbers and visibility (`+` = public):
 ```bash
-repo39 /project --map -d 99
+repo39-cli /project --map -d 99
 ```
 ```
 src/main.rs
@@ -107,7 +107,7 @@ src/walk.rs
 
 Show call graph:
 ```bash
-repo39 /project --map --calls -d 99
+repo39-cli /project --map --calls -d 99
 ```
 ```
 src/walk.rs
@@ -117,7 +117,7 @@ src/walk.rs
 
 Limit symbols per file:
 ```bash
-repo39 /project --map -d 99 -n 3
+repo39-cli /project --map -d 99 -n 3
 ```
 ```
 src/config.rs
@@ -129,7 +129,7 @@ src/config.rs
 
 Search for a specific symbol:
 ```bash
-repo39 /project --map -d 99 -g "login*"
+repo39-cli /project --map -d 99 -g "login*"
 ```
 ```
 src/auth.rs
@@ -140,7 +140,7 @@ src/auth.rs
 ### 4. Check recent activity
 
 ```bash
-repo39 /project --changes
+repo39-cli /project --changes
 ```
 ```
 2h src/main.rs +8 -3
@@ -153,7 +153,7 @@ Time-relative (`3m`, `2h`, `1d`, `2w`, `3M`, `1y`). Shows insertions/deletions, 
 ### 5. Search file contents
 
 ```bash
-repo39 /project --search "TODO"
+repo39-cli /project --search "TODO"
 ```
 ```
 src/main.rs:42 // TODO: handle error
@@ -162,7 +162,7 @@ src/walk.rs:18 // TODO: optimize
 
 With regex and context:
 ```bash
-repo39 /project --search "fn\s+test_" --regex --context 1 --file-filter "*.rs"
+repo39-cli /project --search "fn\s+test_" --regex --context 1 --file-filter "*.rs"
 ```
 ```
 src/walk.rs
@@ -176,7 +176,7 @@ Max 50 results by default. Use `--max-results 0` for unlimited.
 ### 6. Review symbol-level changes
 
 ```bash
-repo39 /project --review
+repo39-cli /project --review
 ```
 ```
 src/main.rs
@@ -188,7 +188,7 @@ src/old.rs
 
 Compares against `HEAD~1` by default. Specify a ref:
 ```bash
-repo39 /project --review main
+repo39-cli /project --review main
 ```
 
 Symbols: `+` = added, `-` = removed, `~` = modified. Max 20 changed files.
@@ -196,7 +196,7 @@ Symbols: `+` = added, `-` = removed, `~` = modified. Max 20 changed files.
 ### 7. Full picture in one command
 
 ```bash
-repo39 /project --summary
+repo39-cli /project --summary
 ```
 ```
 [identify]
@@ -224,7 +224,7 @@ Combines identify + deps + map (depth 99, 1 symbol/file) + changes. Equivalent t
 ### 8. Explore structure
 
 ```bash
-repo39 /project -d 1 -n 3
+repo39-cli /project -d 1 -n 3
 ```
 ```
 Cargo.toml
@@ -241,7 +241,7 @@ One level deep, max 3 items per subfolder.
 ### 9. Find specific files
 
 ```bash
-repo39 /project -g "*.json" -s a
+repo39-cli /project -g "*.json" -s a
 ```
 ```
 .mcp.json
@@ -254,7 +254,7 @@ Full depth search. Only matching files + ancestor dirs shown.
 ### 10. Check sizes and dates
 
 ```bash
-repo39 /project -d 1 -i sm
+repo39-cli /project -d 1 -i sm
 ```
 ```
 Cargo.lock 51K 2026-04-10
@@ -265,7 +265,7 @@ src/
 ### 11. Git dirty files
 
 ```bash
-repo39 /project -d 99 -i g
+repo39-cli /project -d 99 -i g
 ```
 ```
 src/

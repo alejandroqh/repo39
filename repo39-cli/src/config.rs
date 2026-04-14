@@ -4,7 +4,7 @@ use clap::Parser;
 
 #[derive(Parser)]
 #[command(
-    name = "repo39",
+    name = "repo39-cli",
     version,
     about = "Token-optimized repo explorer for AI agents"
 )]
