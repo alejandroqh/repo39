@@ -97,7 +97,7 @@ impl McpServer {
         run_review_tool(params).map_err(|e| e.to_string())
     }
 
-    #[tool(description = "One-shot repo orientation. Combines identify + deps + map (top 5 symbols/file) + changes into a single call. Use as first call when entering an unfamiliar repo.")]
+    #[tool(description = "One-shot repo orientation. Combines identify + deps + map (top 1 symbol/file) + changes into a single call. Use as first call when entering an unfamiliar repo.")]
     async fn repo39_summary(
         &self,
         Parameters(params): Parameters<SummaryParams>,
@@ -191,7 +191,7 @@ fn run_summary_tool(params: SummaryParams) -> std::io::Result<String> {
     writeln!(buf, "\n[deps]")?;
     run_deps(&root, &mut buf)?;
     writeln!(buf, "\n[map]")?;
-    run_map(&root, 99, 5, None, false, &mut buf)?;
+    run_map(&root, 99, 1, None, false, &mut buf)?;
     writeln!(buf, "\n[changes]")?;
     run_changes(&root, &mut buf)?;
     Ok(String::from_utf8(buf).unwrap_or_default())

@@ -14,7 +14,7 @@ cargo install --path .
 
 ```
 repo39 <path> [-s fdhca] [-d N] [-n N] [-g glob] [-o nscm] [-i smcgt] [-u KMG]
-              [--identify] [--map] [--calls] [--deps] [--changes]
+              [--identify] [--map] [--calls] [--deps] [--changes] [--summary]
               [--search <pat> [--regex] [--context N] [--file-filter glob] [--max-results N]]
               [--review [ref]]
 ```
@@ -33,6 +33,7 @@ repo39 <path> [-s fdhca] [-d N] [-n N] [-g glob] [-o nscm] [-i smcgt] [-u KMG]
 | `--calls` | show intra-file call graph (with `--map`) | - | - |
 | `--deps` | list dependencies from manifest files | - | - |
 | `--changes` | compact git log (recent file changes) | - | - |
+| `--summary` | one-shot orientation (identify+deps+map+changes) | - | - |
 | `--search` | search file contents | literal or regex pattern | - |
 | `--regex` | treat `--search` pattern as regex | - | off |
 | `--context` | context lines around search matches | `0`..N | `0` |
@@ -40,7 +41,7 @@ repo39 <path> [-s fdhca] [-d N] [-n N] [-g glob] [-o nscm] [-i smcgt] [-u KMG]
 | `--max-results` | max search matches | `0`=unlimited, N | `50` |
 | `--review` | symbol-level diff vs git ref | git ref (e.g. `main`, `HEAD~3`) | `HEAD~1` |
 
-Standalone flags (`--identify`, `--map`, `--deps`, `--changes`, `--search`, `--review`) can be combined. When multiple are used, output is sectioned with `[label]` headers.
+Standalone flags (`--identify`, `--map`, `--deps`, `--changes`, `--summary`, `--search`, `--review`) can be combined. When multiple are used, output is sectioned with `[label]` headers.
 
 ## Output Format
 
@@ -195,7 +196,7 @@ Symbols: `+` = added, `-` = removed, `~` = modified. Max 20 changed files.
 ### 7. Full picture in one command
 
 ```bash
-repo39 /project --identify --deps --map -d 1
+repo39 /project --summary
 ```
 ```
 [identify]
@@ -211,8 +212,14 @@ src/main.rs
  fn main:1
 src/walk.rs
  +struct WalkCtx:5
- +fn walk:12
+ ...+3
+
+[changes]
+2h src/main.rs +8 -3
+5d src/walk.rs +12 -8
 ```
+
+Combines identify + deps + map (depth 99, 1 symbol/file) + changes. Equivalent to `--identify --deps --map -d 99 -n 1 --changes`.
 
 ### 8. Explore structure
 

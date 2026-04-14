@@ -36,7 +36,7 @@ fn main() -> io::Result<()> {
 
     let has_search = cli.search.is_some();
     let has_review = cli.review.is_some();
-    let standalone_count = [cli.identify, cli.map, cli.deps, cli.changes, has_search, has_review]
+    let standalone_count = [cli.identify, cli.map, cli.deps, cli.changes, cli.summary, has_search, has_review]
         .iter().filter(|&&b| b).count();
 
     if standalone_count > 0 {
@@ -61,6 +61,20 @@ fn main() -> io::Result<()> {
         let map_depth = cli.depth.unwrap_or(99);
         section!(cli.map, "map", |root: &std::path::Path, out: &mut _| run_map(root, map_depth, cli.limit, cli.grep.as_deref(), cli.calls, out));
         section!(cli.changes, "changes", |root: &std::path::Path, out: &mut _| run_changes(root, out));
+        if cli.summary {
+            if multi {
+                if sect > 0 { writeln!(out)?; }
+            }
+            writeln!(out, "[identify]")?;
+            run_identify(&dir_buf, &mut out)?;
+            writeln!(out, "\n[deps]")?;
+            run_deps(&dir_buf, &mut out)?;
+            writeln!(out, "\n[map]")?;
+            run_map(&dir_buf, 99, 1, None, false, &mut out)?;
+            writeln!(out, "\n[changes]")?;
+            run_changes(&dir_buf, &mut out)?;
+            sect += 1;
+        }
         if let Some(ref pattern) = cli.search {
             if multi {
                 if sect > 0 { writeln!(out)?; }

@@ -1,5 +1,6 @@
 [workspace]
 members = ["repo39-cli", "repo39-mcp"]
+default-members = ["repo39-cli"]
 resolver = "3"
 
 [workspace.package]

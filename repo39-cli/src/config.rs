@@ -60,6 +60,10 @@ pub struct Cli {
     #[arg(long)]
     pub changes: bool,
 
+    /// One-shot repo orientation (identify + deps + map + changes)
+    #[arg(long)]
+    pub summary: bool,
+
     /// Show symbol-level changes between git refs (default: HEAD~1)
     #[arg(long)]
     pub review: Option<Option<String>>,

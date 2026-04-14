@@ -9,7 +9,7 @@ cargo build                          # build all (cli + mcp)
 cargo build -p repo39-cli            # build CLI only
 cargo build -p repo39-mcp            # build MCP server only
 cargo build --release                # optimized release build
-cargo run -p repo39-cli -- <args>    # run CLI
+cargo run -- <args>                  # run CLI (default member)
 cargo test                           # run all tests
 cargo test -p repo39-cli             # run CLI tests
 ```
@@ -34,6 +34,7 @@ CLI flags:
 - `--map` — extract code symbols (functions, structs, classes)
 - `--deps` — list dependencies from manifest files
 - `--changes` — show recent git changes
+- `--summary` — one-shot orientation (identify + deps + map + changes)
 - `--search <pattern>` — search file contents (with `--regex`, `--context N`, `--file-filter`, `--max-results`)
 - `--review [ref]` — symbol-level diff vs git ref (default: HEAD~1)
 
