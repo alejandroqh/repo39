@@ -18,13 +18,17 @@ fn create_tree(base: &Path) {
     fs::write(base.join("node_modules/pkg/index.js"), "//").unwrap();
 }
 
-fn run_on_tree(show: Option<&str>) -> (tempfile::TempDir, Vec<String>) {
+fn run_on_tree(show: Option<&str>, depth: Option<usize>) -> (tempfile::TempDir, Vec<String>) {
     let tmp = tempfile::tempdir().unwrap();
     create_tree(tmp.path());
     let mut args = vec![tmp.path().to_str().unwrap().to_string()];
     if let Some(s) = show {
         args.push("-s".into());
         args.push(s.into());
+    }
+    if let Some(d) = depth {
+        args.push("-d".into());
+        args.push(d.to_string());
     }
     let out = repo39_bin()
         .args(&args)
@@ -39,15 +43,17 @@ fn run_on_tree(show: Option<&str>) -> (tempfile::TempDir, Vec<String>) {
     (tmp, lines)
 }
 
-#[test]
-fn default_shows_files_and_dirs_no_hidden() {
-    let (_tmp, l) = run_on_tree(None);
+// --- show filter tests (use -d 99 for full depth) ---
 
-    assert!(l.iter().any(|s| s == "d src/"));
-    assert!(l.iter().any(|s| s == "d src/nested/"));
-    assert!(l.iter().any(|s| s.starts_with("f readme.txt ")));
-    assert!(l.iter().any(|s| s.starts_with("f src/main.rs ")));
-    assert!(l.iter().any(|s| s.starts_with("f src/nested/lib.rs ")));
+#[test]
+fn full_depth_shows_files_and_dirs_no_hidden() {
+    let (_tmp, l) = run_on_tree(None, Some(99));
+
+    assert!(l.contains(&"src/".into()));
+    assert!(l.contains(&" nested/".into()));
+    assert!(l.contains(&"readme.txt".into()));
+    assert!(l.contains(&" main.rs".into()));
+    assert!(l.contains(&"  lib.rs".into()));
 
     assert!(!l.iter().any(|s| s.contains(".secret")));
     assert!(!l.iter().any(|s| s.contains(".hidden_dir")));
@@ -55,25 +61,25 @@ fn default_shows_files_and_dirs_no_hidden() {
 
 #[test]
 fn files_only() {
-    let (_tmp, l) = run_on_tree(Some("f"));
+    let (_tmp, l) = run_on_tree(Some("f"), Some(99));
 
-    assert!(l.iter().any(|s| s.starts_with("f readme.txt ")));
-    assert!(l.iter().any(|s| s.starts_with("f src/main.rs ")));
-    assert!(!l.iter().any(|s| s.starts_with("d ")));
+    assert!(l.contains(&"readme.txt".into()));
+    assert!(l.contains(&" main.rs".into()));
+    assert!(!l.iter().any(|s| s.trim_start().ends_with('/')));
 }
 
 #[test]
 fn dirs_only() {
-    let (_tmp, l) = run_on_tree(Some("d"));
+    let (_tmp, l) = run_on_tree(Some("d"), Some(99));
 
-    assert!(l.iter().any(|s| s == "d src/"));
-    assert!(l.iter().any(|s| s == "d src/nested/"));
-    assert!(!l.iter().any(|s| s.starts_with("f ")));
+    assert!(l.contains(&"src/".into()));
+    assert!(l.contains(&" nested/".into()));
+    assert!(!l.iter().any(|s| !s.trim_start().ends_with('/')));
 }
 
 #[test]
 fn show_hidden() {
-    let (_tmp, l) = run_on_tree(Some("fdh"));
+    let (_tmp, l) = run_on_tree(Some("fdh"), Some(99));
 
     assert!(l.iter().any(|s| s.contains(".secret")));
     assert!(l.iter().any(|s| s.contains(".hidden_dir")));
@@ -81,27 +87,27 @@ fn show_hidden() {
 
 #[test]
 fn show_all() {
-    let (_tmp, l) = run_on_tree(Some("a"));
+    let (_tmp, l) = run_on_tree(Some("a"), Some(99));
 
-    assert!(l.iter().any(|s| s.starts_with("f ")));
-    assert!(l.iter().any(|s| s.starts_with("d ")));
+    assert!(l.iter().any(|s| !s.trim_start().ends_with('/')));
+    assert!(l.iter().any(|s| s.trim_start().ends_with('/')));
     assert!(l.iter().any(|s| s.contains(".secret")));
     assert!(l.iter().any(|s| s.contains(".hidden_dir")));
 }
 
 #[test]
 fn skips_noisy_dirs() {
-    let (_tmp, l) = run_on_tree(Some("a"));
+    let (_tmp, l) = run_on_tree(Some("a"), Some(99));
 
     assert!(!l.iter().any(|s| s.contains("node_modules")));
 }
 
 #[test]
 fn sorted_output() {
-    let (_tmp, l) = run_on_tree(Some("f"));
+    let (_tmp, l) = run_on_tree(Some("f"), Some(99));
 
     let root_files: Vec<&str> = l.iter()
-        .filter(|s| s.starts_with("f ") && !s.contains('/'))
+        .filter(|s| !s.starts_with(' '))
         .map(|s| s.as_str())
         .collect();
     let mut sorted = root_files.clone();
@@ -120,22 +126,71 @@ fn nonexistent_path_fails() {
 
 #[test]
 fn filter_parse_a_enables_all() {
-    let (_tmp_a, l_a) = run_on_tree(Some("a"));
-    let (_tmp_fdh, l_fdh) = run_on_tree(Some("fdh"));
+    let (_tmp_a, l_a) = run_on_tree(Some("a"), Some(99));
+    let (_tmp_fdh, l_fdh) = run_on_tree(Some("fdh"), Some(99));
 
     assert_eq!(l_a, l_fdh);
 }
 
 #[test]
-fn file_sizes_are_correct() {
-    let tmp = tempfile::tempdir().unwrap();
-    fs::write(tmp.path().join("five.txt"), "hello").unwrap();
+fn indentation_reflects_depth() {
+    let (_tmp, l) = run_on_tree(None, Some(99));
 
-    let out = repo39_bin()
-        .args([tmp.path().to_str().unwrap(), "-s", "f"])
-        .output()
-        .unwrap();
-    assert!(out.status.success());
-    let stdout = String::from_utf8(out.stdout).unwrap();
-    assert!(stdout.contains("f five.txt 5"));
+    assert!(l.contains(&"src/".into()));
+    assert!(l.contains(&" nested/".into()));
+    assert!(l.contains(&"  lib.rs".into()));
+}
+
+// --- depth limit tests ---
+
+#[test]
+fn depth_zero_root_only() {
+    let (_tmp, l) = run_on_tree(None, None);
+
+    // no indented lines — root only
+    assert!(!l.iter().any(|s| s.starts_with(' ')));
+    // has root-level entries
+    assert!(l.contains(&"readme.txt".into()));
+    assert!(l.contains(&"src/".into()));
+}
+
+#[test]
+fn depth_one_level() {
+    let (_tmp, l) = run_on_tree(None, Some(1));
+
+    // depth 0 entries
+    assert!(l.contains(&"src/".into()));
+    assert!(l.contains(&"readme.txt".into()));
+    // depth 1 entries (1 space indent)
+    assert!(l.contains(&" main.rs".into()));
+    assert!(l.contains(&" nested/".into()));
+    // no depth 2 entries (2 space indent)
+    assert!(!l.iter().any(|s| s.starts_with("  ")));
+}
+
+// --- count tests ---
+
+#[test]
+fn count_on_truncated_dirs() {
+    let (_tmp, l) = run_on_tree(Some("fdc"), None);
+
+    // src has 2 files: main.rs + nested/lib.rs
+    assert!(l.contains(&"src/ 2".into()));
+}
+
+#[test]
+fn count_without_depth_limit_noop() {
+    let (_tmp, l) = run_on_tree(Some("fdc"), Some(99));
+
+    // all dirs expanded, no counts
+    assert!(l.contains(&"src/".into()));
+    assert!(!l.iter().any(|s| s.starts_with("src/ ")));
+}
+
+#[test]
+fn count_respects_hidden() {
+    let (_tmp, l) = run_on_tree(Some("fdch"), None);
+
+    // .hidden_dir has 1 file: data
+    assert!(l.iter().any(|s| s.starts_with(".hidden_dir/ 1")));
 }

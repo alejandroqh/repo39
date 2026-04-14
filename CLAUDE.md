@@ -18,9 +18,14 @@ Rust CLI using `clap` (v4, derive API). Single-binary, edition 2024.
 
 - `src/main.rs` — entry point, CLI parsing, recursive directory walker
 
-Takes a folder path (relative or absolute), outputs a token-compact listing of all files and directories. Auto-skips noisy dirs (.git, node_modules, target, etc).
+Takes a folder path (relative or absolute), outputs a token-compact tree listing. Auto-skips noisy dirs (.git, node_modules, target, etc).
 
-Output format: `d path/` for dirs, `f path size` for files. One line per entry, sorted alphabetically.
+Output format: indented tree (1 space per depth level). `name/` = dir, `name` = file. Sorted alphabetically per level.
+
+CLI flags:
+- `-s <chars>` — show filter: `f`=files `d`=dirs `h`=hidden `c`=count `a`=all (default: `fd`)
+- `-d <N>` — max depth: `0`=root only (default), `1`=root+one level, large N=unlimited
+- `-s c` appends file count to truncated dirs: `src/ 3`
 
 Release profile: strip + LTO + single codegen unit.
 
