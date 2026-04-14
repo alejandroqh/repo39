@@ -11,6 +11,20 @@ const SKIP_DIRS: &[&str] = &[
     "venv",
     "dist",
     ".next",
+    "build",
+    ".build",
+    ".dart_tool",
+    ".gradle",
+    "Pods",
+    "Flutter",
+    "DerivedData",
+    ".idea",
+    ".vs",
+    "bin",
+    "obj",
+    "out",
+    "vendor",
+    ".cache",
 ];
 
 const INDENT_BUF: &[u8; 64] = b"                                                                ";

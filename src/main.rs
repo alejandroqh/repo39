@@ -52,14 +52,16 @@ fn main() -> io::Result<()> {
 
         section!(cli.identify, "identify", |root: &std::path::Path, out: &mut _| run_identify(root, out));
         section!(cli.deps, "deps", |root: &std::path::Path, out: &mut _| run_deps(root, out));
-        section!(cli.map, "map", |root: &std::path::Path, out: &mut _| run_map(root, cli.depth, cli.limit, cli.grep.as_deref(), out));
+        let map_depth = cli.depth.unwrap_or(99);
+        section!(cli.map, "map", |root: &std::path::Path, out: &mut _| run_map(root, map_depth, cli.limit, cli.grep.as_deref(), out));
         section!(cli.changes, "changes", |root: &std::path::Path, out: &mut _| run_changes(root, out));
         let _ = sect;
 
         return Ok(());
     }
 
-    let filter = ShowFilter::parse(&cli.show, cli.depth);
+    let depth = cli.depth.unwrap_or(0);
+    let filter = ShowFilter::parse(&cli.show, depth);
     let order = SortOrder::parse(&cli.order);
     let info = InfoFlags::parse(&cli.info, order);
 

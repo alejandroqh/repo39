@@ -732,18 +732,22 @@ fn epsilon() {}
 }
 
 #[test]
-fn map_depth_zero_skips_subdirs() {
+fn map_depth_limits_subdirs() {
     let tmp = tempfile::tempdir().unwrap();
-    fs::create_dir_all(tmp.path().join("src")).unwrap();
-    fs::write(tmp.path().join("src/lib.rs"), "fn deep() {}").unwrap();
+    fs::create_dir_all(tmp.path().join("src/nested")).unwrap();
     fs::write(tmp.path().join("root.rs"), "fn shallow() {}").unwrap();
+    fs::write(tmp.path().join("src/mid.rs"), "fn middle() {}").unwrap();
+    fs::write(tmp.path().join("src/nested/deep.rs"), "fn deep() {}").unwrap();
 
-    // depth 0 = root only
-    let l = run_map(tmp.path(), &[]);
-    assert!(l.contains(&"root.rs".into()));
-    assert!(l.iter().any(|s| s == " fn shallow"));
-    assert!(!l.iter().any(|s| s.contains("lib.rs")));
+    // depth 1 = root + one level only (src/*.rs but not src/nested/*.rs)
+    let l = run_map(tmp.path(), &["-d", "1"]);
+    assert!(l.iter().any(|s| s.trim() == "fn shallow"));
+    assert!(l.iter().any(|s| s.trim() == "fn middle"));
     assert!(!l.iter().any(|s| s.contains("deep")));
+
+    // default (no -d) = full depth
+    let l = run_map(tmp.path(), &[]);
+    assert!(l.iter().any(|s| s.trim() == "fn deep"));
 }
 
 // --- deps tests ---

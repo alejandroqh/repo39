@@ -87,6 +87,16 @@ static LANGUAGES: LazyLock<Vec<LangPatterns>> = LazyLock::new(|| {
             r"^[ \t]*defp\s+(\w+)",
             r"^[ \t]*defmodule\s+(\w+)",
         ]),
+        // Dart
+        lang(&["dart"], &[
+            r"^[ \t]*class\s+(\w+)",
+            r"^[ \t]*enum\s+(\w+)",
+            r"^[ \t]*mixin\s+(\w+)",
+            r"^[ \t]*extension\s+(\w+)",
+            r"^[ \t]*typedef\s+(\w+)",
+            r"^[ \t]*(?:static\s+)?(?:Future|void|String|int|double|bool|List|Map|Set|dynamic|Widget|State|Color|BuildContext)(?:<[^>]*>)?\s+(\w+)\s*\(",
+            r"^[ \t]*(?:static\s+)?(?:Future|void|String|int|double|bool|List|Map|Set|dynamic|Widget|State|Color|BuildContext)(?:<[^>]*>)?\s+get\s+(\w+)",
+        ]),
         // Shell
         lang(&["sh", "bash", "zsh"], &[
             r"^[ \t]*(\w+)\s*\(\)",
@@ -113,11 +123,17 @@ fn extract_symbols(path: &Path, lang: &LangPatterns) -> io::Result<Vec<String>> 
     let mut seen = HashSet::new();
 
     for line in reader.lines() {
-        let line = line?;
+        let line = match line {
+            Ok(l) => l,
+            Err(_) => return Ok(symbols), // binary file or encoding error — stop
+        };
         for re in &lang.regexes {
             if let Some(caps) = re.captures(&line) {
                 if let Some(m) = caps.get(1) {
-                    let name = m.as_str().to_string();
+                    let name = m.as_str();
+                    if name.len() < 2 {
+                        break; // skip single-char symbols (noise)
+                    }
                     let prefix = symbol_prefix(&line);
                     let full = format!("{prefix}{name}");
                     if seen.insert(full.clone()) {
@@ -159,6 +175,22 @@ fn symbol_prefix(line: &str) -> &'static str {
         ("interface ", "interface "),
         ("type ", "type "),
         ("class ", "class "),
+        ("mixin ", "mixin "),
+        ("extension ", "extension "),
+        ("typedef ", "typedef "),
+        ("void ", "fn "),
+        ("static void ", "fn "),
+        ("static Future", "fn "),
+        ("Future", "fn "),
+        ("String ", "fn "),
+        ("int ", "fn "),
+        ("double ", "fn "),
+        ("bool ", "fn "),
+        ("List", "fn "),
+        ("Map", "fn "),
+        ("Widget ", "fn "),
+        ("dynamic ", "fn "),
+        ("State", "fn "),
         ("module ", "module "),
         ("protocol ", "protocol "),
         ("func ", "fn "),

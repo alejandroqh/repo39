@@ -16,9 +16,9 @@ pub struct Cli {
     #[arg(short, long, default_value = "fd")]
     pub show: String,
 
-    /// Max depth (0=root only, default)
-    #[arg(short, long, default_value = "0")]
-    pub depth: usize,
+    /// Max depth (0=root only; default: 0 for tree, 99 for --map)
+    #[arg(short, long)]
+    pub depth: Option<usize>,
 
     /// Grep files by name glob (e.g. "*.json", "pack*", "Cargo.toml")
     #[arg(short, long)]
