@@ -310,6 +310,39 @@ Note: `--identify` does NOT skip these — their presence is a detection signal.
 
 All tools take a required `path` parameter. Tree/map tools accept `depth`, `limit`, `grep` as in the CLI.
 
+## Benchmark: repo39 vs standard tools
+
+`repo39-cli --summary` vs the equivalent shell commands (`ls`, `find`, `cat`, `grep -rn`, `git log --stat`) to get the same repo orientation.
+
+### Results
+
+| | Small Rust workspace (~30 files) | Large Flutter app (~500 files) |
+|---|---|---|
+| **repo39 calls** | 1 | 1 |
+| **standard calls** | 8 | 4 |
+| **repo39 tokens** | 365 | 999 |
+| **standard tokens** | 2,749 | 7,685 |
+| **token savings** | **86%** | **87%** |
+| **byte savings** | **92%** | **95%** |
+
+### Where the savings come from
+
+```
+standard breakdown      Calls   Lines Words(≈tok)      Bytes
+identify (ls + find)        2      17           27        187
+deps (cat manifests)        4      58          186       1272
+map (grep definitions)      1     309         1815      34594
+changes (git log --stat)    1     168          721       8016
+```
+
+The biggest win is symbol extraction: `grep -rn` outputs full matching lines while repo39 outputs compact `fn name:line` format — ~95% byte reduction on map alone.
+
+### Reproduce
+
+```bash
+./benchmark.sh /path/to/repo
+```
+
 ## Cross-platform
 
 Works on Linux, macOS, and Windows. Output always uses `/` path separators.
