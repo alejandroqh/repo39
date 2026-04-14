@@ -55,6 +55,10 @@ struct Cli {
     /// Size unit: K=KB M=MB G=GB (default: K)
     #[arg(short, long, default_value = "K")]
     unit: String,
+
+    /// Max files per directory (0=unlimited, default)
+    #[arg(short = 'n', long = "limit", default_value = "0")]
+    limit: usize,
 }
 
 struct ShowFilter {
@@ -229,6 +233,7 @@ struct WalkCtx<'a> {
     order: SortOrder,
     info: InfoFlags,
     unit: SizeUnit,
+    limit: usize,
     dirty_files: HashSet<String>,
 }
 
@@ -264,6 +269,7 @@ fn main() -> io::Result<()> {
         order,
         info,
         unit: SizeUnit::parse(&cli.unit),
+        limit: cli.limit,
         dirty_files,
     };
 
@@ -347,8 +353,26 @@ fn collect_entries(dir_buf: &Path, ctx: &WalkCtx) -> io::Result<Vec<EntryInfo>> 
 fn walk(dir_buf: &mut PathBuf, ctx: &WalkCtx, depth: usize, out: &mut impl Write) -> io::Result<()> {
     let infos = collect_entries(dir_buf.as_path(), ctx)?;
 
+    let apply_limit = ctx.limit > 0 && depth > 0;
+    let (total_files, total_dirs) = if apply_limit {
+        infos.iter().fold((0usize, 0usize), |(f, d), i| {
+            if i.is_dir { (f, d + 1) } else { (f + 1, d) }
+        })
+    } else {
+        (0, 0)
+    };
+
+    let mut file_count = 0usize;
+    let mut dir_count = 0usize;
+    let mut truncated = false;
+
     for info in &infos {
         if info.is_dir {
+            dir_count += 1;
+            if apply_limit && dir_count > ctx.limit {
+                truncated = true;
+                continue;
+            }
             let at_limit = depth >= ctx.filter.max_depth;
             if ctx.filter.dirs {
                 write_indent(out, depth)?;
@@ -368,7 +392,22 @@ fn walk(dir_buf: &mut PathBuf, ctx: &WalkCtx, depth: usize, out: &mut impl Write
                 dir_buf.pop();
             }
         } else if ctx.filter.files {
+            file_count += 1;
+            if apply_limit && file_count > ctx.limit {
+                truncated = true;
+                continue;
+            }
             write_file_line(out, depth, info, ctx)?;
+        }
+    }
+
+    if truncated {
+        let hidden_files = total_files.saturating_sub(ctx.limit);
+        let hidden_dirs = total_dirs.saturating_sub(ctx.limit);
+        let total_hidden = hidden_files + hidden_dirs;
+        if total_hidden > 0 {
+            write_indent(out, depth)?;
+            writeln!(out, "...+{total_hidden}")?;
         }
     }
 
@@ -434,9 +473,9 @@ fn sort_entries(entries: &mut [EntryInfo], order: SortOrder) {
     }
 }
 
-fn count_files(dir: &Path, filter: &ShowFilter) -> io::Result<usize> {
+fn count_files(dir_buf: &mut PathBuf, filter: &ShowFilter) -> io::Result<usize> {
     let mut total = 0;
-    let entries = match fs::read_dir(dir) {
+    let entries = match fs::read_dir(dir_buf.as_path()) {
         Ok(rd) => rd,
         Err(_) => return Ok(0),
     };
@@ -456,7 +495,9 @@ fn count_files(dir: &Path, filter: &ShowFilter) -> io::Result<usize> {
 
         if ft.is_dir() {
             if !should_skip(name_str) {
-                total += count_files(&entry.path(), filter)?;
+                dir_buf.push(name_str);
+                total += count_files(dir_buf, filter)?;
+                dir_buf.pop();
             }
         } else if ft.is_file() {
             total += 1;
@@ -546,12 +587,6 @@ fn load_git_dirty(root: &Path, explicit: bool) -> HashSet<String> {
 
     String::from_utf8_lossy(&output.stdout)
         .lines()
-        .filter_map(|line| {
-            if line.len() > 3 {
-                Some(line[3..].to_string())
-            } else {
-                None
-            }
-        })
+        .filter_map(|line| line.get(3..).map(|s| s.to_string()))
         .collect()
 }

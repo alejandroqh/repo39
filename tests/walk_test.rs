@@ -34,6 +34,18 @@ fn run_on_tree_full(
     info: Option<&str>,
     unit: Option<&str>,
 ) -> (tempfile::TempDir, Vec<String>) {
+    run_on_tree_all(show, depth, grep, order, info, unit, None)
+}
+
+fn run_on_tree_all(
+    show: Option<&str>,
+    depth: Option<usize>,
+    grep: Option<&str>,
+    order: Option<&str>,
+    info: Option<&str>,
+    unit: Option<&str>,
+    limit: Option<usize>,
+) -> (tempfile::TempDir, Vec<String>) {
     let tmp = tempfile::tempdir().unwrap();
     create_tree(tmp.path());
     let mut args = vec![tmp.path().to_str().unwrap().to_string()];
@@ -43,6 +55,7 @@ fn run_on_tree_full(
     if let Some(o) = order { args.push("-o".into()); args.push(o.into()); }
     if let Some(i) = info { args.push("-i".into()); args.push(i.into()); }
     if let Some(u) = unit { args.push("-u".into()); args.push(u.into()); }
+    if let Some(n) = limit { args.push("-n".into()); args.push(n.to_string()); }
     let out = repo39_bin()
         .args(&args)
         .output()
@@ -346,4 +359,111 @@ fn info_multiple_fields() {
 
     // should have both size (K) and date (YYYY-)
     assert!(l.iter().any(|s| s.contains("K") && s.contains("20")));
+}
+
+// --- limit tests ---
+
+#[test]
+fn limit_files_per_dir() {
+    // tree has 1 root file (readme.txt) + 2 dirs (src/, .hidden_dir via node_modules skipped)
+    // src/ has 1 file (main.rs) + 1 dir (nested/)
+    // nested/ has 1 file (lib.rs)
+    let (_tmp, l) = run_on_tree_all(Some("f"), Some(99), None, None, None, None, Some(1));
+
+    // root: readme.txt shown, no "+more" (only 1 file)
+    assert!(l.contains(&"readme.txt".into()));
+
+    // src/ depth 1: main.rs shown, no "+more" (only 1 file)
+    assert!(l.contains(&" main.rs".into()));
+}
+
+#[test]
+fn limit_shows_ellipsis_in_subdir() {
+    // limit only applies at depth > 0, so put files in a subdir
+    let tmp = tempfile::tempdir().unwrap();
+    let sub = tmp.path().join("sub");
+    fs::create_dir_all(&sub).unwrap();
+    fs::write(sub.join("a.txt"), "a").unwrap();
+    fs::write(sub.join("b.txt"), "b").unwrap();
+    fs::write(sub.join("c.txt"), "c").unwrap();
+    fs::write(sub.join("d.txt"), "d").unwrap();
+    fs::write(sub.join("e.txt"), "e").unwrap();
+
+    let out = repo39_bin()
+        .args([tmp.path().to_str().unwrap(), "-d", "1", "-n", "2"])
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    let stdout = String::from_utf8(out.stdout).unwrap();
+
+    // sub/ + 2 files + "...+3"
+    assert!(stdout.contains("sub/"));
+    assert!(stdout.contains("...+3"));
+}
+
+#[test]
+fn limit_does_not_apply_to_root() {
+    let tmp = tempfile::tempdir().unwrap();
+    fs::write(tmp.path().join("a.txt"), "a").unwrap();
+    fs::write(tmp.path().join("b.txt"), "b").unwrap();
+    fs::write(tmp.path().join("c.txt"), "c").unwrap();
+    fs::write(tmp.path().join("d.txt"), "d").unwrap();
+    fs::write(tmp.path().join("e.txt"), "e").unwrap();
+
+    let out = repo39_bin()
+        .args([tmp.path().to_str().unwrap(), "-n", "2"])
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    let stdout = String::from_utf8(out.stdout).unwrap();
+
+    // root is unlimited — all 5 files shown
+    assert_eq!(stdout.lines().count(), 5);
+    assert!(!stdout.contains("..."));
+}
+
+#[test]
+fn limit_truncates_dirs_in_subdir() {
+    let tmp = tempfile::tempdir().unwrap();
+    let sub = tmp.path().join("parent");
+    fs::create_dir_all(sub.join("aaa")).unwrap();
+    fs::create_dir_all(sub.join("bbb")).unwrap();
+    fs::create_dir_all(sub.join("ccc")).unwrap();
+    fs::write(sub.join("x.txt"), "x").unwrap();
+
+    let out = repo39_bin()
+        .args([tmp.path().to_str().unwrap(), "-d", "2", "-n", "1"])
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    let stdout = String::from_utf8(out.stdout).unwrap();
+
+    // inside parent/: 1 file + 1 dir shown, 2 dirs hidden = ...+2
+    assert!(stdout.contains("...+2"));
+}
+
+#[test]
+fn limit_zero_is_unlimited() {
+    let tmp = tempfile::tempdir().unwrap();
+    fs::write(tmp.path().join("a.txt"), "a").unwrap();
+    fs::write(tmp.path().join("b.txt"), "b").unwrap();
+    fs::write(tmp.path().join("c.txt"), "c").unwrap();
+
+    let out = repo39_bin()
+        .args([tmp.path().to_str().unwrap(), "-n", "0"])
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    let stdout = String::from_utf8(out.stdout).unwrap();
+
+    assert_eq!(stdout.lines().count(), 3);
+    assert!(!stdout.contains("..."));
+}
+
+#[test]
+fn limit_does_not_affect_dirs() {
+    let (_tmp, l) = run_on_tree_all(None, Some(99), None, None, None, None, Some(1));
+
+    // dirs still shown even with limit=1
+    assert!(l.iter().any(|s| s.trim_start().ends_with('/')));
 }
