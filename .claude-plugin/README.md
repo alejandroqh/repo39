@@ -15,3 +15,6 @@ openclaw plugins install git@github.com:alejandroqh/repo39.git
 - `repo39_map` — Extract code symbols (functions, structs, classes)
 - `repo39_deps` — List project dependencies from manifest files
 - `repo39_changes` — Show recent file changes from git history
+- `repo39_search` — Search file contents (literal or regex)
+- `repo39_review` — Symbol-level diff between git refs
+- `repo39_summary` — One-shot repo orientation (identify + deps + map + changes)
