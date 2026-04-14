@@ -81,6 +81,7 @@ pub enum SizeUnit {
 }
 
 impl SizeUnit {
+    #[allow(dead_code)]
     pub fn parse(s: &str) -> Self {
         match s.chars().next().unwrap_or('K') {
             'M' | 'm' => Self::M,
