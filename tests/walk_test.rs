@@ -467,3 +467,147 @@ fn limit_does_not_affect_dirs() {
     // dirs still shown even with limit=1
     assert!(l.iter().any(|s| s.trim_start().ends_with('/')));
 }
+
+// --- identify tests ---
+
+fn run_identify(base: &Path) -> Vec<String> {
+    let out = repo39_bin()
+        .args([base.to_str().unwrap(), "--identify"])
+        .output()
+        .expect("failed to run repo39");
+    assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    String::from_utf8(out.stdout)
+        .unwrap()
+        .lines()
+        .map(String::from)
+        .collect()
+}
+
+#[test]
+fn identify_rust_project() {
+    let tmp = tempfile::tempdir().unwrap();
+    fs::write(tmp.path().join("Cargo.toml"), "[package]").unwrap();
+    fs::write(tmp.path().join("Cargo.lock"), "").unwrap();
+    fs::create_dir_all(tmp.path().join("src")).unwrap();
+    fs::write(tmp.path().join("src/main.rs"), "fn main() {}").unwrap();
+    fs::write(tmp.path().join("src/lib.rs"), "").unwrap();
+
+    let l = run_identify(tmp.path());
+    assert!(!l.is_empty());
+    // first result should be rust
+    assert!(l[0].starts_with("rust "));
+    // confidence should be high
+    let confidence: f64 = l[0].split_whitespace().last().unwrap().parse().unwrap();
+    assert!(confidence > 0.7, "rust confidence {confidence} too low");
+}
+
+#[test]
+fn identify_python_project() {
+    let tmp = tempfile::tempdir().unwrap();
+    fs::write(tmp.path().join("pyproject.toml"), "").unwrap();
+    fs::write(tmp.path().join("requirements.txt"), "").unwrap();
+    fs::write(tmp.path().join("app.py"), "").unwrap();
+    fs::write(tmp.path().join("utils.py"), "").unwrap();
+    fs::write(tmp.path().join("test.py"), "").unwrap();
+
+    let l = run_identify(tmp.path());
+    assert!(!l.is_empty());
+    assert!(l[0].starts_with("python "));
+    let confidence: f64 = l[0].split_whitespace().last().unwrap().parse().unwrap();
+    assert!(confidence > 0.7, "python confidence {confidence} too low");
+}
+
+#[test]
+fn identify_empty_dir() {
+    let tmp = tempfile::tempdir().unwrap();
+
+    let l = run_identify(tmp.path());
+    assert!(l.is_empty(), "empty dir should produce no results");
+}
+
+#[test]
+fn identify_output_format() {
+    let tmp = tempfile::tempdir().unwrap();
+    fs::write(tmp.path().join("Cargo.toml"), "").unwrap();
+
+    let l = run_identify(tmp.path());
+    for line in &l {
+        let parts: Vec<&str> = line.split_whitespace().collect();
+        assert_eq!(parts.len(), 2, "each line should be 'name confidence': {line}");
+        let conf: f64 = parts[1].parse().expect("confidence should be f64");
+        assert!(conf > 0.0 && conf <= 1.0, "confidence out of range: {conf}");
+        // check two decimal places
+        assert!(parts[1].contains('.'), "should have decimal: {}", parts[1]);
+    }
+}
+
+#[test]
+fn identify_max_five_results() {
+    // create a dir with signals for many categories
+    let tmp = tempfile::tempdir().unwrap();
+    fs::write(tmp.path().join("Cargo.toml"), "").unwrap();
+    fs::write(tmp.path().join("package.json"), "").unwrap();
+    fs::write(tmp.path().join("pyproject.toml"), "").unwrap();
+    fs::write(tmp.path().join("go.mod"), "").unwrap();
+    fs::write(tmp.path().join("Gemfile"), "").unwrap();
+    fs::write(tmp.path().join("composer.json"), "").unwrap();
+    fs::write(tmp.path().join("tsconfig.json"), "").unwrap();
+    fs::write(tmp.path().join("Dockerfile"), "").unwrap();
+    fs::write(tmp.path().join(".gitignore"), "").unwrap();
+
+    let l = run_identify(tmp.path());
+    assert!(l.len() <= 5, "should return at most 5 results, got {}", l.len());
+}
+
+#[test]
+fn identify_sorted_descending() {
+    let tmp = tempfile::tempdir().unwrap();
+    fs::write(tmp.path().join("Cargo.toml"), "").unwrap();
+    fs::write(tmp.path().join("package.json"), "").unwrap();
+    fs::write(tmp.path().join("README.md"), "").unwrap();
+
+    let l = run_identify(tmp.path());
+    let confidences: Vec<f64> = l.iter()
+        .map(|s| s.split_whitespace().last().unwrap().parse().unwrap())
+        .collect();
+    for w in confidences.windows(2) {
+        assert!(w[0] >= w[1], "not sorted desc: {} < {}", w[0], w[1]);
+    }
+}
+
+#[test]
+fn identify_ignores_other_flags() {
+    let tmp = tempfile::tempdir().unwrap();
+    fs::write(tmp.path().join("Cargo.toml"), "").unwrap();
+    fs::create_dir_all(tmp.path().join("src")).unwrap();
+    fs::write(tmp.path().join("src/main.rs"), "fn main() {}").unwrap();
+
+    // run with --identify plus other flags that would normally affect walk output
+    let out = repo39_bin()
+        .args([tmp.path().to_str().unwrap(), "--identify", "-d", "5", "-s", "a", "-n", "1"])
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    let stdout = String::from_utf8(out.stdout).unwrap();
+
+    // should be identify output, not walk output
+    assert!(stdout.contains("rust"));
+    assert!(!stdout.contains("src/"));  // no tree output
+}
+
+#[test]
+fn identify_flutter_project() {
+    let tmp = tempfile::tempdir().unwrap();
+    fs::write(tmp.path().join("pubspec.yaml"), "").unwrap();
+    fs::create_dir_all(tmp.path().join("android")).unwrap();
+    fs::create_dir_all(tmp.path().join("ios")).unwrap();
+    fs::create_dir_all(tmp.path().join("lib")).unwrap();
+    fs::write(tmp.path().join("lib/main.dart"), "").unwrap();
+    fs::write(tmp.path().join("analysis_options.yaml"), "").unwrap();
+
+    let l = run_identify(tmp.path());
+    // flutter and dart should both appear
+    let names: Vec<&str> = l.iter().map(|s| s.split_whitespace().next().unwrap()).collect();
+    assert!(names.contains(&"flutter"), "flutter not detected: {names:?}");
+    assert!(names.contains(&"dart"), "dart not detected: {names:?}");
+}

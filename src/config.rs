@@ -39,6 +39,10 @@ pub struct Cli {
     /// Max files per directory (0=unlimited, default)
     #[arg(short = 'n', long = "limit", default_value = "0")]
     pub limit: usize,
+
+    /// Identify project type(s) with confidence scores
+    #[arg(long)]
+    pub identify: bool,
 }
 
 pub struct ShowFilter {

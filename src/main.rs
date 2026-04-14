@@ -1,6 +1,7 @@
 mod config;
 mod git;
 mod glob;
+mod identify;
 mod util;
 mod walk;
 
@@ -12,12 +13,20 @@ use clap::Parser;
 use config::{Cli, InfoFlags, ShowFilter, SizeUnit, SortOrder};
 use git::load_git_dirty;
 use glob::Glob;
+use identify::run_identify;
 use util::canonicalize;
 use walk::{grep_walk, walk, WalkCtx};
 
 fn main() -> io::Result<()> {
     let cli = Cli::parse();
     let mut dir_buf = canonicalize(&cli.path)?;
+
+    if cli.identify {
+        let stdout = io::stdout();
+        let mut out = BufWriter::new(stdout.lock());
+        return run_identify(&dir_buf, &mut out);
+    }
+
     let filter = ShowFilter::parse(&cli.show, cli.depth);
     let order = SortOrder::parse(&cli.order);
     let info = InfoFlags::parse(&cli.info, order);
