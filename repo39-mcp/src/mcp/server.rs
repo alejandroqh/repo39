@@ -1,4 +1,5 @@
 use std::collections::HashSet;
+use std::io::Write;
 
 use rmcp::handler::server::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
@@ -65,12 +66,19 @@ impl McpServer {
         capture(&params.path, run_deps).map_err(|e| e.to_string())
     }
 
-    #[tool(description = "Show recent file changes from git log (last 100 commits, max 50 files). Output: `time_ago path [+ins] [-del] [new|del]`. Requires git repo.")]
+    #[tool(description = "Show file changes. Default: recent git log (last 100 commits). With branch param (e.g. 'main..HEAD'): branch diff. Output: `time_ago path [+ins] [-del] [new|del]`. Max 50 files.")]
     async fn repo39_changes(
         &self,
         Parameters(params): Parameters<ChangesParams>,
     ) -> Result<String, String> {
-        capture(&params.path, run_changes).map_err(|e| e.to_string())
+        if let Some(branch) = &params.branch {
+            let root = canonicalize(std::path::Path::new(&params.path)).map_err(|e| e.to_string())?;
+            let mut buf = Vec::with_capacity(4096);
+            crate::changes::run_changes_branch(&root, branch, &mut buf).map_err(|e| e.to_string())?;
+            Ok(String::from_utf8(buf).unwrap_or_default())
+        } else {
+            capture(&params.path, run_changes).map_err(|e| e.to_string())
+        }
     }
 
     #[tool(description = "Search file contents. Output: `path:line content` per match. Skips binary/generated files, auto-skips .git, node_modules, target, etc. Groups separated by `--`.")]
@@ -88,6 +96,14 @@ impl McpServer {
     ) -> Result<String, String> {
         run_review_tool(params).map_err(|e| e.to_string())
     }
+
+    #[tool(description = "One-shot repo orientation. Combines identify + deps + map (top 5 symbols/file) + changes into a single call. Use as first call when entering an unfamiliar repo.")]
+    async fn repo39_summary(
+        &self,
+        Parameters(params): Parameters<SummaryParams>,
+    ) -> Result<String, String> {
+        run_summary_tool(params).map_err(|e| e.to_string())
+    }
 }
 
 #[tool_handler]
@@ -101,7 +117,8 @@ impl ServerHandler for McpServer {
             "Token-optimized repository explorer for AI agents. \
              Tools: repo39_tree (directory structure), repo39_identify (project type), \
              repo39_map (code symbols), repo39_deps (dependencies), repo39_changes (git changes), \
-             repo39_search (content search), repo39_review (symbol-level diff).",
+             repo39_search (content search), repo39_review (symbol-level diff), \
+             repo39_summary (one-shot repo orientation).",
         )
     }
 }
@@ -162,6 +179,20 @@ fn run_map_tool(params: MapParams) -> std::io::Result<String> {
     let limit = params.limit.unwrap_or(0);
     let mut buf = Vec::with_capacity(4096);
     run_map(&root, depth, limit, params.grep.as_deref(), &mut buf)?;
+    Ok(String::from_utf8(buf).unwrap_or_default())
+}
+
+fn run_summary_tool(params: SummaryParams) -> std::io::Result<String> {
+    let root = canonicalize(std::path::Path::new(&params.path))?;
+    let mut buf = Vec::with_capacity(8192);
+    writeln!(buf, "[identify]")?;
+    run_identify(&root, &mut buf)?;
+    writeln!(buf, "\n[deps]")?;
+    run_deps(&root, &mut buf)?;
+    writeln!(buf, "\n[map]")?;
+    run_map(&root, 99, 5, None, &mut buf)?;
+    writeln!(buf, "\n[changes]")?;
+    run_changes(&root, &mut buf)?;
     Ok(String::from_utf8(buf).unwrap_or_default())
 }
 

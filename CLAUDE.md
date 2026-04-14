@@ -40,14 +40,15 @@ CLI flags:
 ### repo39-mcp
 MCP server using `rmcp` (TurboMCP). Runs over stdio transport.
 
-Exposes 7 tools:
+Exposes 8 tools:
 - `repo39_tree` — directory tree listing (info flag `t` for token estimates)
-- `repo39_identify` — project type detection (with category: lang/framework/non-code)
+- `repo39_identify` — project type detection (with category: lang/framework/non-code, dep-based framework detection)
 - `repo39_map` — code symbol extraction (with line numbers and visibility markers)
 - `repo39_deps` — dependency parsing (workspace-aware with shared/mismatch analysis)
-- `repo39_changes` — git change log
+- `repo39_changes` — git change log (with optional `branch` param for branch diffs like `main..HEAD`)
 - `repo39_search` — token-compact content search (skips binary, supports regex)
 - `repo39_review` — symbol-level diff between git refs
+- `repo39_summary` — one-shot repo orientation (identify + deps + map + changes)
 
 Configured as local MCP server via `.mcp.json`. Use the repo39 MCP tools to test the project.
 

@@ -65,6 +65,16 @@ pub struct DepsParams {
 pub struct ChangesParams {
     /// Target directory path (relative or absolute)
     pub path: String,
+
+    /// Branch diff spec (e.g. "main..HEAD", "main"). If set, shows branch diff instead of recent commits.
+    #[serde(default)]
+    pub branch: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct SummaryParams {
+    /// Target directory path (relative or absolute)
+    pub path: String,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]

@@ -162,8 +162,82 @@ fn parse_git_log(root: &Path) -> Vec<FileChange> {
     changes
 }
 
+fn write_change(c: &FileChange, time_prefix: Option<&str>, out: &mut impl Write) -> io::Result<()> {
+    if let Some(ago) = time_prefix {
+        write!(out, "{ago} ")?;
+    }
+    write!(out, "{}", c.path)?;
+    if c.insertions > 0 { write!(out, " +{}", c.insertions)?; }
+    if c.deletions > 0 { write!(out, " -{}", c.deletions)?; }
+    if c.is_new { write!(out, " new")?; }
+    else if c.is_deleted { write!(out, " del")?; }
+    writeln!(out)
+}
+
+#[allow(dead_code)]
+pub fn run_changes_branch(root: &Path, branch: &str, out: &mut impl Write) -> io::Result<()> {
+    let diff_out = Command::new("git")
+        .arg("-C").arg(root)
+        .args(["diff", "--numstat", branch])
+        .output()?;
+
+    if !diff_out.status.success() {
+        return Err(io::Error::new(io::ErrorKind::Other, "git diff failed"));
+    }
+
+    let diff_str = String::from_utf8_lossy(&diff_out.stdout);
+    let mut files: Vec<FileChange> = Vec::new();
+
+    for line in diff_str.lines() {
+        let parts: Vec<&str> = line.splitn(3, '\t').collect();
+        if parts.len() == 3 {
+            let ins = parts[0].parse::<u64>().unwrap_or(0);
+            let del = parts[1].parse::<u64>().unwrap_or(0);
+            let path = normalize_path(parts[2]);
+            files.push(FileChange {
+                path,
+                last_modified: 0,
+                insertions: ins,
+                deletions: del,
+                is_new: false,
+                is_deleted: false,
+            });
+        }
+    }
+
+    let ad_out = Command::new("git")
+        .arg("-C").arg(root)
+        .args(["diff", "--diff-filter=AD", "--name-status", branch])
+        .output()?;
+
+    if ad_out.status.success() {
+        let ad_str = String::from_utf8_lossy(&ad_out.stdout);
+        for line in ad_str.lines() {
+            let parts: Vec<&str> = line.splitn(2, '\t').collect();
+            if parts.len() == 2 {
+                let path = parts[1].to_string();
+                if let Some(f) = files.iter_mut().find(|f| f.path == path) {
+                    match parts[0] {
+                        "A" => f.is_new = true,
+                        "D" => f.is_deleted = true,
+                        _ => {}
+                    }
+                }
+            }
+        }
+    }
+
+    files.sort_by(|a, b| b.insertions.cmp(&a.insertions));
+    files.truncate(50);
+
+    for c in &files {
+        write_change(c, None, out)?;
+    }
+
+    Ok(())
+}
+
 pub fn run_changes(root: &Path, out: &mut impl Write) -> io::Result<()> {
-    // Check if this is a git repo
     let check = Command::new("git")
         .arg("-C")
         .arg(root)
@@ -187,19 +261,7 @@ pub fn run_changes(root: &Path, out: &mut impl Write) -> io::Result<()> {
 
     for c in &changes {
         let ago = format_time_ago(c.last_modified, now);
-        write!(out, "{ago} {}", c.path)?;
-        if c.insertions > 0 {
-            write!(out, " +{}", c.insertions)?;
-        }
-        if c.deletions > 0 {
-            write!(out, " -{}", c.deletions)?;
-        }
-        if c.is_new {
-            write!(out, " new")?;
-        } else if c.is_deleted {
-            write!(out, " del")?;
-        }
-        writeln!(out)?;
+        write_change(c, Some(&ago), out)?;
     }
 
     Ok(())

@@ -11,6 +11,7 @@ enum Marker {
     Dir(&'static str, f64),
     Path(&'static str, f64),
     Ext(&'static str, f64),
+    Dep(&'static str, f64),
 }
 
 struct ScanData {
@@ -18,6 +19,7 @@ struct ScanData {
     root_dirs: HashSet<String>,
     depth1_paths: HashSet<String>,
     ext_counts: HashMap<String, usize>,
+    dep_names: HashSet<String>,
 }
 
 fn scan(root: &Path) -> io::Result<ScanData> {
@@ -26,6 +28,7 @@ fn scan(root: &Path) -> io::Result<ScanData> {
         root_dirs: HashSet::new(),
         depth1_paths: HashSet::new(),
         ext_counts: HashMap::new(),
+        dep_names: HashSet::new(),
     };
 
     for entry in fs::read_dir(root)?.filter_map(|e| e.ok()) {
@@ -51,6 +54,7 @@ fn scan(root: &Path) -> io::Result<ScanData> {
         }
     }
 
+    scan_deps(root, &mut data.dep_names);
     Ok(data)
 }
 
@@ -135,6 +139,9 @@ fn score_marker(marker: &Marker, data: &ScanData) -> f64 {
                 0.0
             }
         }
+        Marker::Dep(name, w) => {
+            if data.dep_names.contains(*name) { *w } else { 0.0 }
+        }
     }
 }
 
@@ -165,6 +172,166 @@ pub fn run_identify(root: &Path, out: &mut impl Write) -> io::Result<()> {
         writeln!(out, "{name} {cat} {confidence:.2}")?;
     }
     Ok(())
+}
+
+fn scan_deps(root: &Path, deps: &mut HashSet<String>) {
+    let cargo_content = fs::read_to_string(root.join("Cargo.toml")).ok();
+    if let Some(ref content) = cargo_content {
+        scan_cargo_deps(content, deps);
+        for member in parse_workspace_members(content) {
+            if let Ok(sub) = fs::read_to_string(root.join(&member).join("Cargo.toml")) {
+                scan_cargo_deps(&sub, deps);
+            }
+        }
+    }
+    if let Ok(content) = fs::read_to_string(root.join("package.json")) {
+        scan_json_deps(&content, deps);
+    }
+    if let Ok(content) = fs::read_to_string(root.join("pyproject.toml")) {
+        scan_pyproject_deps(&content, deps);
+    }
+    if let Ok(content) = fs::read_to_string(root.join("go.mod")) {
+        scan_gomod_deps(&content, deps);
+    }
+}
+
+fn scan_cargo_deps(content: &str, deps: &mut HashSet<String>) {
+    let mut in_deps = false;
+    for line in content.lines() {
+        let t = line.trim();
+        if t.starts_with('[') {
+            in_deps = t == "[dependencies]" || t == "[dev-dependencies]"
+                || t == "[build-dependencies]";
+            continue;
+        }
+        if in_deps {
+            if let Some(name) = t.split(['=', ' ']).next() {
+                let name = name.trim();
+                if !name.is_empty() && !name.starts_with('#') {
+                    deps.insert(name.to_string());
+                }
+            }
+        }
+    }
+}
+
+fn scan_json_deps(content: &str, deps: &mut HashSet<String>) {
+    let mut in_deps = false;
+    let mut depth = 0i32;
+    for line in content.lines() {
+        let t = line.trim();
+        if t.contains("\"dependencies\"") || t.contains("\"devDependencies\"") {
+            in_deps = true;
+            depth = 0;
+        }
+        if in_deps {
+            depth += t.matches('{').count() as i32;
+            depth -= t.matches('}').count() as i32;
+            if depth <= 0 && !t.contains("\"dependencies\"") {
+                in_deps = false;
+                continue;
+            }
+            // Extract "name": "version"
+            if let Some(start) = t.find('"') {
+                if let Some(end) = t[start + 1..].find('"') {
+                    let name = &t[start + 1..start + 1 + end];
+                    if name != "dependencies" && name != "devDependencies" && !name.is_empty() {
+                        deps.insert(name.to_string());
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn scan_pyproject_deps(content: &str, deps: &mut HashSet<String>) {
+    let mut in_deps = false;
+    for line in content.lines() {
+        let t = line.trim();
+        if t.starts_with('[') {
+            in_deps = false;
+        }
+        if t.starts_with("dependencies") && t.contains('[') {
+            in_deps = true;
+            continue;
+        }
+        if in_deps {
+            if t.starts_with(']') {
+                in_deps = false;
+                continue;
+            }
+            // "package>=version" or "package"
+            let name = t.trim_matches(|c: char| c == '"' || c == '\'' || c == ',');
+            let name = name.split(['>', '<', '=', '!', ';', '[']).next().unwrap_or("").trim();
+            if !name.is_empty() {
+                deps.insert(name.to_lowercase());
+            }
+        }
+    }
+}
+
+fn scan_gomod_deps(content: &str, deps: &mut HashSet<String>) {
+    let mut in_require = false;
+    for line in content.lines() {
+        let t = line.trim();
+        if t.starts_with("require (") || t == "require (" {
+            in_require = true;
+            continue;
+        }
+        if in_require {
+            if t == ")" { in_require = false; continue; }
+            // "module/path version"
+            if let Some(path) = t.split_whitespace().next() {
+                // Use short name (last segment)
+                if let Some(name) = path.rsplit('/').next() {
+                    deps.insert(name.to_string());
+                }
+                // Also store full path for precise matching
+                deps.insert(path.to_string());
+            }
+        }
+        // Single-line require
+        if t.starts_with("require ") && !t.contains('(') {
+            let parts: Vec<&str> = t.split_whitespace().collect();
+            if parts.len() >= 2 {
+                deps.insert(parts[1].to_string());
+                if let Some(name) = parts[1].rsplit('/').next() {
+                    deps.insert(name.to_string());
+                }
+            }
+        }
+    }
+}
+
+fn parse_workspace_members(content: &str) -> Vec<String> {
+    let mut in_workspace = false;
+    let mut in_members = false;
+    let mut members = Vec::new();
+    for line in content.lines() {
+        let t = line.trim();
+        if t.starts_with('[') {
+            in_workspace = t == "[workspace]";
+            in_members = false;
+            continue;
+        }
+        if in_workspace && t.starts_with("members") && t.contains('[') {
+            in_members = true;
+            if let (Some(s), Some(e)) = (t.find('['), t.rfind(']')) {
+                for item in t[s + 1..e].split(',') {
+                    let m = item.trim().trim_matches('"').trim_matches('\'');
+                    if !m.is_empty() { members.push(m.to_string()); }
+                }
+                in_members = false;
+            }
+            continue;
+        }
+        if in_members {
+            if t.starts_with(']') { in_members = false; continue; }
+            let m = t.trim_end_matches(',').trim().trim_matches('"').trim_matches('\'');
+            if !m.is_empty() { members.push(m.to_string()); }
+        }
+    }
+    members
 }
 
 fn fingerprints() -> &'static [(&'static str, &'static str, &'static [Marker])] {
@@ -476,6 +643,95 @@ fn fingerprints() -> &'static [(&'static str, &'static str, &'static [Marker])] 
             Ext("astro", 0.30),
             Path("src/pages", 0.10),
             Dir("public", 0.05),
+        ]),
+
+        // ── Dep-based frameworks (Rust) ───────────────────────────────
+        ("clap-cli", "framework", &[
+            Dep("clap", 0.60),
+            File("Cargo.toml", 0.10),
+            Path("src/main.rs", 0.10),
+        ]),
+        ("tokio-async", "framework", &[
+            Dep("tokio", 0.50),
+            File("Cargo.toml", 0.10),
+        ]),
+        ("actix-web", "framework", &[
+            Dep("actix-web", 0.70),
+            File("Cargo.toml", 0.10),
+        ]),
+        ("axum", "framework", &[
+            Dep("axum", 0.70),
+            File("Cargo.toml", 0.10),
+        ]),
+        ("rocket", "framework", &[
+            Dep("rocket", 0.70),
+            File("Cargo.toml", 0.10),
+        ]),
+        ("warp", "framework", &[
+            Dep("warp", 0.70),
+            File("Cargo.toml", 0.10),
+        ]),
+        ("diesel-orm", "framework", &[
+            Dep("diesel", 0.60),
+            File("Cargo.toml", 0.10),
+        ]),
+        ("sqlx-db", "framework", &[
+            Dep("sqlx", 0.60),
+            File("Cargo.toml", 0.10),
+        ]),
+        ("tonic-grpc", "framework", &[
+            Dep("tonic", 0.60),
+            File("Cargo.toml", 0.10),
+        ]),
+        ("mcp-server", "framework", &[
+            Dep("rmcp", 0.70),
+            File("Cargo.toml", 0.10),
+        ]),
+        ("serde-json", "framework", &[
+            Dep("serde", 0.35),
+            Dep("serde_json", 0.30),
+            File("Cargo.toml", 0.05),
+        ]),
+
+        // ── Dep-based frameworks (Go) ─────────────────────────────────
+        ("gin", "framework", &[
+            Dep("gin", 0.65),
+            File("go.mod", 0.10),
+        ]),
+        ("echo-go", "framework", &[
+            Dep("echo", 0.65),
+            File("go.mod", 0.10),
+        ]),
+        ("fiber-go", "framework", &[
+            Dep("fiber", 0.65),
+            File("go.mod", 0.10),
+        ]),
+
+        // ── Dep-based frameworks (Python) ─────────────────────────────
+        ("pytest", "framework", &[
+            Dep("pytest", 0.50),
+            Ext("py", 0.10),
+            Dir("tests", 0.10),
+        ]),
+        ("celery", "framework", &[
+            Dep("celery", 0.60),
+            Ext("py", 0.10),
+        ]),
+        ("scrapy", "framework", &[
+            Dep("scrapy", 0.65),
+            Ext("py", 0.10),
+        ]),
+
+        // ── Dep-based frameworks (JS/TS) ──────────────────────────────
+        ("prisma", "framework", &[
+            Dep("@prisma/client", 0.55),
+            Dep("prisma", 0.35),
+            File("package.json", 0.05),
+        ]),
+        ("tailwindcss", "framework", &[
+            Dep("tailwindcss", 0.55),
+            File("tailwind.config.js", 0.20),
+            File("tailwind.config.ts", 0.20),
         ]),
 
         // ── Non-code (12) ──────────────────────────────────────────────

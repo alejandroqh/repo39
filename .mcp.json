@@ -2,8 +2,8 @@
   "mcpServers": {
     "repo39": {
       "type": "stdio",
-      "command": "./dist/repo39-mcp-macos-arm64",
-      "args": []
+      "command": "cargo",
+      "args": ["run", "--release", "-p", "repo39-mcp", "--quiet"]
     }
   }
 }
