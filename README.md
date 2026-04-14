@@ -14,6 +14,7 @@ cargo install --path .
 
 ```
 repo39 <path> [-s fdhca] [-d N] [-n N] [-g glob] [-o nscm] [-i smcg] [-u KMG]
+              [--identify] [--map] [--deps] [--changes]
 ```
 
 | Flag | What | Values | Default |
@@ -25,6 +26,12 @@ repo39 <path> [-s fdhca] [-d N] [-n N] [-g glob] [-o nscm] [-i smcg] [-u KMG]
 | `-o` | sort | `n`=name `s`=size `m`=modified `c`=created | `n` |
 | `-i` | info to display | `s`=size `m`=modified `c`=created `g`=git | - |
 | `-u` | size unit | `K`=KB `M`=MB `G`=GB | `K` |
+| `--identify` | detect project type(s) with confidence | - | - |
+| `--map` | extract code symbols (fn, struct, class) | uses `-d`, `-n`, `-g` | - |
+| `--deps` | list dependencies from manifest files | - | - |
+| `--changes` | compact git log (recent file changes) | - | - |
+
+Standalone flags (`--identify`, `--map`, `--deps`, `--changes`) can be combined. When multiple are used, output is sectioned with `[label]` headers.
 
 ## Output Format
 
@@ -42,93 +49,147 @@ name 2026-04-10   file with date (-i m or -i c)
 
 ## Agent Workflow
 
-### 1. First look at any repo
+### 1. Identify the project
 
 ```bash
-repo39 /project
+repo39 /project --identify
 ```
 ```
-CLAUDE.md
-Cargo.lock
-Cargo.toml
-README.md
-build.sh
-docs/
-src/
+rust 0.85
+markdown 0.39
+docs 0.12
 ```
 
-Root only. ~10 lines. Agent identifies: Rust project, has docs.
+52 categories: languages, frameworks, non-code (images, data, docs, devops, etc). Top 5 matches with confidence 0.00-1.00.
 
-### 2. Explore structure
+### 2. Read dependencies
+
+```bash
+repo39 /project --deps
+```
+```
+clap 4
+regex 1
+tempfile 3 dev
+```
+
+Parses: Cargo.toml, package.json, pyproject.toml, requirements.txt, go.mod, Gemfile, composer.json. Shows `dev` suffix for dev dependencies.
+
+### 3. Get the code map
+
+```bash
+repo39 /project --map -d 99
+```
+```
+src/main.rs
+ fn main
+src/walk.rs
+ struct WalkCtx
+ fn walk
+ fn grep_walk
+```
+
+12 languages: Rust, Python, JS, TS, Go, Java, Kotlin, Ruby, PHP, C/C++, Swift, Elixir, Shell.
+
+Limit symbols per file:
+```bash
+repo39 /project --map -d 99 -n 3
+```
+```
+src/config.rs
+ struct Cli
+ struct ShowFilter
+ impl ShowFilter
+ ...+9
+```
+
+Search for a specific symbol:
+```bash
+repo39 /project --map -d 99 -g "login*"
+```
+```
+src/auth.rs
+ fn login
+ fn login_handler
+```
+
+### 4. Check recent activity
+
+```bash
+repo39 /project --changes
+```
+```
+2h src/main.rs +8 -3
+5d src/walk.rs +12 -8
+1w README.md +95 new
+```
+
+Time-relative (`3m`, `2h`, `1d`, `2w`, `3M`, `1y`). Shows insertions/deletions, `new`/`del` markers.
+
+### 5. Full picture in one command
+
+```bash
+repo39 /project --identify --deps --map -d 1
+```
+```
+[identify]
+rust 0.85
+markdown 0.39
+
+[deps]
+clap 4
+regex 1
+
+[map]
+src/main.rs
+ fn main
+src/walk.rs
+ struct WalkCtx
+ fn walk
+```
+
+### 6. Explore structure
 
 ```bash
 repo39 /project -d 1 -n 3
 ```
 ```
-CLAUDE.md
-Cargo.lock
 Cargo.toml
 README.md
-build.sh
-docs/
 src/
  main.rs
+ walk.rs
+ config.rs
+ ...+4
 ```
 
 One level deep, max 3 items per subfolder.
 
-### 3. Find specific files
+### 7. Find specific files
 
 ```bash
 repo39 /project -g "*.json" -s a
 ```
 ```
-.claude-plugin/
- plugin.json
 .mcp.json
-openclaw-plugin/
- openclaw.plugin.json
- package.json
+config/
+ settings.json
 ```
 
 Full depth search. Only matching files + ancestor dirs shown.
 
-### 4. Check sizes and dates
+### 8. Check sizes and dates
 
 ```bash
 repo39 /project -d 1 -i sm
 ```
 ```
-CLAUDE.md 3.9K 2026-04-12
 Cargo.lock 51K 2026-04-10
 src/
  main.rs 22K 2026-04-10
 ```
 
-### 5. Find largest files
-
-```bash
-repo39 /project -d 99 -o s -i s
-```
-
-Sort by size descending, show sizes. Each subfolder sorted independently.
-
-### 6. Folder overview with file counts
-
-```bash
-repo39 /project -s fdc
-```
-```
-CLAUDE.md
-Cargo.toml
-docs/ 0
-openclaw-plugin/ 3
-src/ 1
-```
-
-At depth limit, dirs show total file count in subtree.
-
-### 7. Git dirty files
+### 9. Git dirty files
 
 ```bash
 repo39 /project -d 99 -i g
@@ -144,6 +205,8 @@ Dirty files prefixed with `*`. Warns on non-git folders.
 ## Auto-skipped Directories
 
 `.git`, `node_modules`, `target`, `__pycache__`, `.venv`, `venv`, `dist`, `.next`
+
+Note: `--identify` does NOT skip these — their presence is a detection signal.
 
 ## Cross-platform
 

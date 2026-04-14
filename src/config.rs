@@ -43,6 +43,18 @@ pub struct Cli {
     /// Identify project type(s) with confidence scores
     #[arg(long)]
     pub identify: bool,
+
+    /// Show code map (functions, structs, classes)
+    #[arg(long)]
+    pub map: bool,
+
+    /// Show project dependencies from manifest files
+    #[arg(long)]
+    pub deps: bool,
+
+    /// Show recent file changes (compact git log)
+    #[arg(long)]
+    pub changes: bool,
 }
 
 pub struct ShowFilter {

@@ -611,3 +611,408 @@ fn identify_flutter_project() {
     assert!(names.contains(&"flutter"), "flutter not detected: {names:?}");
     assert!(names.contains(&"dart"), "dart not detected: {names:?}");
 }
+
+// --- map tests ---
+
+fn run_map(base: &Path, extra_args: &[&str]) -> Vec<String> {
+    let mut args = vec![base.to_str().unwrap().to_string(), "--map".into()];
+    for a in extra_args {
+        args.push(a.to_string());
+    }
+    let out = repo39_bin()
+        .args(&args)
+        .output()
+        .expect("failed to run repo39");
+    assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    String::from_utf8(out.stdout)
+        .unwrap()
+        .lines()
+        .map(String::from)
+        .collect()
+}
+
+#[test]
+fn map_rust_project() {
+    let tmp = tempfile::tempdir().unwrap();
+    fs::create_dir_all(tmp.path().join("src")).unwrap();
+    fs::write(tmp.path().join("src/main.rs"), "\
+pub fn main() {}
+fn helper() {}
+pub struct Config {}
+enum Mode { A, B }
+trait Runnable {}
+impl Config {}
+").unwrap();
+    fs::write(tmp.path().join("src/lib.rs"), "\
+pub fn init() {}
+pub struct App {}
+").unwrap();
+
+    let l = run_map(tmp.path(), &["-d", "1"]);
+    // Tree format: src/ header, files indented 1, symbols indented 2
+    assert!(l.contains(&"src/".into()));
+    assert!(l.iter().any(|s| s == " lib.rs"));
+    assert!(l.iter().any(|s| s == " main.rs"));
+    assert!(l.iter().any(|s| s == "  fn main"));
+    assert!(l.iter().any(|s| s == "  fn helper"));
+    assert!(l.iter().any(|s| s == "  struct Config"));
+    assert!(l.iter().any(|s| s == "  enum Mode"));
+    assert!(l.iter().any(|s| s == "  trait Runnable"));
+    assert!(l.iter().any(|s| s == "  impl Config"));
+    assert!(l.iter().any(|s| s == "  fn init"));
+    assert!(l.iter().any(|s| s == "  struct App"));
+}
+
+#[test]
+fn map_empty_dir() {
+    let tmp = tempfile::tempdir().unwrap();
+    let l = run_map(tmp.path(), &[]);
+    assert!(l.is_empty(), "empty dir should produce no output");
+}
+
+#[test]
+fn map_skips_noisy_dirs() {
+    let tmp = tempfile::tempdir().unwrap();
+    fs::create_dir_all(tmp.path().join("node_modules")).unwrap();
+    fs::write(tmp.path().join("node_modules/index.js"), "function foo() {}").unwrap();
+    fs::create_dir_all(tmp.path().join("target")).unwrap();
+    fs::write(tmp.path().join("target/main.rs"), "fn bar() {}").unwrap();
+
+    let l = run_map(tmp.path(), &[]);
+    assert!(l.is_empty(), "noisy dirs should be skipped: {l:?}");
+}
+
+#[test]
+fn map_python_symbols() {
+    let tmp = tempfile::tempdir().unwrap();
+    fs::write(tmp.path().join("app.py"), "\
+def hello():
+    pass
+
+class Server:
+    def run(self):
+        pass
+").unwrap();
+
+    let l = run_map(tmp.path(), &[]);
+    assert!(l.contains(&"app.py".into()));
+    assert!(l.iter().any(|s| s == " def hello"));
+    assert!(l.iter().any(|s| s == " class Server"));
+    assert!(l.iter().any(|s| s == " def run"));
+}
+
+#[test]
+fn map_ignores_other_flags() {
+    let tmp = tempfile::tempdir().unwrap();
+    fs::write(tmp.path().join("test.rs"), "fn foo() {}\n").unwrap();
+
+    let l = run_map(tmp.path(), &["-d", "5", "-s", "a"]);
+    assert!(l.contains(&"test.rs".into()));
+    assert!(l.iter().any(|s| s == " fn foo"));
+    assert!(!l.iter().any(|s| s.ends_with('/')));
+}
+
+#[test]
+fn map_limit_truncates_symbols() {
+    let tmp = tempfile::tempdir().unwrap();
+    fs::write(tmp.path().join("big.rs"), "\
+fn alpha() {}
+fn beta() {}
+fn gamma() {}
+fn delta() {}
+fn epsilon() {}
+").unwrap();
+
+    let l = run_map(tmp.path(), &["-n", "2"]);
+    assert!(l.contains(&"big.rs".into()));
+    assert!(l.iter().any(|s| s == " fn alpha"));
+    assert!(l.iter().any(|s| s == " fn beta"));
+    assert!(!l.iter().any(|s| s == " fn gamma"));
+    assert!(l.iter().any(|s| s == " ...+3"), "should show ...+3: {l:?}");
+}
+
+#[test]
+fn map_depth_zero_skips_subdirs() {
+    let tmp = tempfile::tempdir().unwrap();
+    fs::create_dir_all(tmp.path().join("src")).unwrap();
+    fs::write(tmp.path().join("src/lib.rs"), "fn deep() {}").unwrap();
+    fs::write(tmp.path().join("root.rs"), "fn shallow() {}").unwrap();
+
+    // depth 0 = root only
+    let l = run_map(tmp.path(), &[]);
+    assert!(l.contains(&"root.rs".into()));
+    assert!(l.iter().any(|s| s == " fn shallow"));
+    assert!(!l.iter().any(|s| s.contains("lib.rs")));
+    assert!(!l.iter().any(|s| s.contains("deep")));
+}
+
+// --- deps tests ---
+
+fn run_deps(base: &Path) -> Vec<String> {
+    let out = repo39_bin()
+        .args([base.to_str().unwrap(), "--deps"])
+        .output()
+        .expect("failed to run repo39");
+    assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    String::from_utf8(out.stdout)
+        .unwrap()
+        .lines()
+        .map(String::from)
+        .collect()
+}
+
+#[test]
+fn deps_cargo_toml() {
+    let tmp = tempfile::tempdir().unwrap();
+    fs::write(tmp.path().join("Cargo.toml"), r#"
+[package]
+name = "myapp"
+version = "0.1.0"
+
+[dependencies]
+clap = "4"
+serde = { version = "1.0", features = ["derive"] }
+
+[dev-dependencies]
+tempfile = "3"
+"#).unwrap();
+
+    let l = run_deps(tmp.path());
+    assert!(l.contains(&"clap 4".to_string()), "missing clap: {l:?}");
+    assert!(l.contains(&"serde 1.0".to_string()), "missing serde: {l:?}");
+    assert!(l.contains(&"tempfile 3 dev".to_string()), "missing tempfile dev: {l:?}");
+}
+
+#[test]
+fn deps_package_json() {
+    let tmp = tempfile::tempdir().unwrap();
+    fs::write(tmp.path().join("package.json"), r#"{
+  "name": "myapp",
+  "dependencies": {
+    "react": "^18.2.0",
+    "lodash": "~4.17.21"
+  },
+  "devDependencies": {
+    "jest": "^29.0.0"
+  }
+}"#).unwrap();
+
+    let l = run_deps(tmp.path());
+    assert!(l.contains(&"react 18.2.0".to_string()), "missing react: {l:?}");
+    assert!(l.contains(&"lodash 4.17.21".to_string()), "missing lodash: {l:?}");
+    assert!(l.contains(&"jest 29.0.0 dev".to_string()), "missing jest dev: {l:?}");
+}
+
+#[test]
+fn deps_requirements_txt() {
+    let tmp = tempfile::tempdir().unwrap();
+    fs::write(tmp.path().join("requirements.txt"), "# comment
+requests==2.28.1
+flask>=2.0
+numpy
+").unwrap();
+
+    let l = run_deps(tmp.path());
+    assert!(l.contains(&"requests 2.28.1".to_string()), "missing requests: {l:?}");
+    assert!(l.contains(&"flask 2.0".to_string()), "missing flask: {l:?}");
+    assert!(l.contains(&"numpy".to_string()), "missing numpy: {l:?}");
+}
+
+#[test]
+fn deps_empty_dir() {
+    let tmp = tempfile::tempdir().unwrap();
+
+    let l = run_deps(tmp.path());
+    assert!(l.is_empty(), "expected empty output for dir with no manifests: {l:?}");
+}
+
+#[test]
+fn deps_multiple_manifests() {
+    let tmp = tempfile::tempdir().unwrap();
+    fs::write(tmp.path().join("Cargo.toml"), r#"
+[dependencies]
+clap = "4"
+"#).unwrap();
+    fs::write(tmp.path().join("package.json"), r#"{
+  "dependencies": {
+    "react": "^18.0.0"
+  }
+}"#).unwrap();
+
+    let l = run_deps(tmp.path());
+    assert!(l.contains(&"Cargo.toml".to_string()), "missing Cargo.toml header: {l:?}");
+    assert!(l.contains(&"package.json".to_string()), "missing package.json header: {l:?}");
+    assert!(l.contains(&" clap 4".to_string()), "missing indented clap: {l:?}");
+    assert!(l.contains(&" react 18.0.0".to_string()), "missing indented react: {l:?}");
+}
+
+#[test]
+fn deps_ignores_other_flags() {
+    let tmp = tempfile::tempdir().unwrap();
+    fs::write(tmp.path().join("Cargo.toml"), r#"
+[dependencies]
+clap = "4"
+"#).unwrap();
+
+    let out = repo39_bin()
+        .args([tmp.path().to_str().unwrap(), "--deps", "-d", "5"])
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    let stdout = String::from_utf8(out.stdout).unwrap();
+    assert!(stdout.contains("clap 4"));
+    assert!(!stdout.contains("src/"));
+}
+
+// --- changes tests ---
+
+fn init_git_repo(path: &Path) {
+    Command::new("git")
+        .args(["init"])
+        .current_dir(path)
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["config", "user.email", "test@test.com"])
+        .current_dir(path)
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["config", "user.name", "Test"])
+        .current_dir(path)
+        .output()
+        .unwrap();
+}
+
+#[test]
+fn changes_not_git_repo() {
+    let tmp = tempfile::tempdir().unwrap();
+    fs::write(tmp.path().join("hello.txt"), "hi").unwrap();
+
+    let out = repo39_bin()
+        .args([tmp.path().to_str().unwrap(), "--changes"])
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    let stdout = String::from_utf8(out.stdout).unwrap();
+    let stderr = String::from_utf8(out.stderr).unwrap();
+    assert!(stdout.is_empty(), "stdout should be empty for non-git repo");
+    assert!(stderr.contains("not a git repo"), "stderr should warn: {stderr}");
+}
+
+#[test]
+fn changes_with_commits() {
+    let tmp = tempfile::tempdir().unwrap();
+    init_git_repo(tmp.path());
+
+    fs::write(tmp.path().join("hello.rs"), "fn main() {}").unwrap();
+    Command::new("git")
+        .args(["add", "."])
+        .current_dir(tmp.path())
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["commit", "-m", "init"])
+        .current_dir(tmp.path())
+        .output()
+        .unwrap();
+
+    fs::write(tmp.path().join("hello.rs"), "fn main() {\n    println!(\"hi\");\n}").unwrap();
+    Command::new("git")
+        .args(["add", "."])
+        .current_dir(tmp.path())
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["commit", "-m", "update"])
+        .current_dir(tmp.path())
+        .output()
+        .unwrap();
+
+    let out = repo39_bin()
+        .args([tmp.path().to_str().unwrap(), "--changes"])
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    let stdout = String::from_utf8(out.stdout).unwrap();
+
+    assert!(stdout.contains("hello.rs"), "output should contain hello.rs: {stdout}");
+    assert!(stdout.contains("+"), "output should contain insertions: {stdout}");
+    assert!(stdout.contains("new"), "output should contain 'new' marker: {stdout}");
+}
+
+#[test]
+fn changes_output_format() {
+    let tmp = tempfile::tempdir().unwrap();
+    init_git_repo(tmp.path());
+
+    fs::write(tmp.path().join("a.txt"), "line1\nline2\n").unwrap();
+    Command::new("git")
+        .args(["add", "."])
+        .current_dir(tmp.path())
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["commit", "-m", "add a"])
+        .current_dir(tmp.path())
+        .output()
+        .unwrap();
+
+    let out = repo39_bin()
+        .args([tmp.path().to_str().unwrap(), "--changes"])
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    let stdout = String::from_utf8(out.stdout).unwrap();
+
+    for line in stdout.lines() {
+        let parts: Vec<&str> = line.split_whitespace().collect();
+        assert!(parts.len() >= 3, "line should have at least 3 parts: {line}");
+        let time = parts[0];
+        assert!(
+            time.ends_with('m')
+                || time.ends_with('h')
+                || time.ends_with('d')
+                || time.ends_with('w')
+                || time.ends_with('M')
+                || time.ends_with('y'),
+            "time_ago should end with time unit: {time}"
+        );
+        assert!(
+            parts.iter().any(|p| p.starts_with('+')),
+            "should have insertions: {line}"
+        );
+    }
+}
+
+#[test]
+fn changes_ignores_other_flags() {
+    let tmp = tempfile::tempdir().unwrap();
+    init_git_repo(tmp.path());
+
+    fs::write(tmp.path().join("test.rs"), "fn test() {}").unwrap();
+    Command::new("git")
+        .args(["add", "."])
+        .current_dir(tmp.path())
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["commit", "-m", "init"])
+        .current_dir(tmp.path())
+        .output()
+        .unwrap();
+
+    let out = repo39_bin()
+        .args([tmp.path().to_str().unwrap(), "--changes", "-d", "5"])
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    let stdout = String::from_utf8(out.stdout).unwrap();
+
+    assert!(stdout.contains("test.rs"), "should show test.rs in changes output");
+    assert!(stdout.contains("+"), "should show insertions");
+    assert!(
+        !stdout.contains("test.rs/"),
+        "should not be walk output with trailing slash"
+    );
+}

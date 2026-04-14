@@ -88,7 +88,7 @@ fn scan_depth1(root: &Path, dir_name: &str, data: &mut ScanData) -> io::Result<(
 fn count_ext(name: &str, counts: &mut HashMap<String, usize>) {
     if let Some((prefix, ext)) = name.rsplit_once('.') {
         if !prefix.is_empty() && !ext.is_empty() {
-            *counts.entry(ext.to_ascii_lowercase()).or_insert(0) += 1;
+            *counts.entry(ext.to_ascii_lowercase()).or_default() += 1;
         }
     }
 }
