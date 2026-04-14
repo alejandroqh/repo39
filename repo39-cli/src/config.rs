@@ -48,6 +48,10 @@ pub struct Cli {
     #[arg(long)]
     pub map: bool,
 
+    /// Show intra-file call graph (use with --map)
+    #[arg(long)]
+    pub calls: bool,
+
     /// Show project dependencies from manifest files
     #[arg(long)]
     pub deps: bool,

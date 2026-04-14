@@ -53,6 +53,10 @@ pub struct MapParams {
     /// Filter symbols by name glob
     #[serde(default)]
     pub grep: Option<String>,
+
+    /// Show intra-file call graph (which functions call which)
+    #[serde(default)]
+    pub calls: Option<bool>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]

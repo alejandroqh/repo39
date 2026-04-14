@@ -59,7 +59,7 @@ fn main() -> io::Result<()> {
         section!(cli.identify, "identify", |root: &std::path::Path, out: &mut _| run_identify(root, out));
         section!(cli.deps, "deps", |root: &std::path::Path, out: &mut _| run_deps(root, out));
         let map_depth = cli.depth.unwrap_or(99);
-        section!(cli.map, "map", |root: &std::path::Path, out: &mut _| run_map(root, map_depth, cli.limit, cli.grep.as_deref(), out));
+        section!(cli.map, "map", |root: &std::path::Path, out: &mut _| run_map(root, map_depth, cli.limit, cli.grep.as_deref(), cli.calls, out));
         section!(cli.changes, "changes", |root: &std::path::Path, out: &mut _| run_changes(root, out));
         if let Some(ref pattern) = cli.search {
             if multi {

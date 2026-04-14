@@ -50,7 +50,7 @@ impl McpServer {
         capture(&params.path, run_identify).map_err(|e| e.to_string())
     }
 
-    #[tool(description = "Extract code symbols from source files. Output: indented tree (dir/ file symbols). Symbol format: `prefix name` (e.g. `fn foo`, `class Bar`). 13 languages: rs py js ts go java kt rb php c/cpp swift ex dart sh.")]
+    #[tool(description = "Extract code symbols from source files. Output: indented tree (dir/ file symbols). Symbol format: `prefix name:line` (e.g. `fn foo:10`, `class Bar:25`). With calls=true: `fn foo:10 -> bar, baz` showing intra-file call graph. 13 languages: rs py js ts go java kt rb php c/cpp swift ex dart sh.")]
     async fn repo39_map(
         &self,
         Parameters(params): Parameters<MapParams>,
@@ -177,8 +177,9 @@ fn run_map_tool(params: MapParams) -> std::io::Result<String> {
     let root = canonicalize(std::path::Path::new(&params.path))?;
     let depth = params.depth.unwrap_or(99);
     let limit = params.limit.unwrap_or(0);
+    let calls = params.calls.unwrap_or(false);
     let mut buf = Vec::with_capacity(4096);
-    run_map(&root, depth, limit, params.grep.as_deref(), &mut buf)?;
+    run_map(&root, depth, limit, params.grep.as_deref(), calls, &mut buf)?;
     Ok(String::from_utf8(buf).unwrap_or_default())
 }
 
@@ -190,7 +191,7 @@ fn run_summary_tool(params: SummaryParams) -> std::io::Result<String> {
     writeln!(buf, "\n[deps]")?;
     run_deps(&root, &mut buf)?;
     writeln!(buf, "\n[map]")?;
-    run_map(&root, 99, 5, None, &mut buf)?;
+    run_map(&root, 99, 5, None, false, &mut buf)?;
     writeln!(buf, "\n[changes]")?;
     run_changes(&root, &mut buf)?;
     Ok(String::from_utf8(buf).unwrap_or_default())

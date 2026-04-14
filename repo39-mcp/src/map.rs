@@ -1,7 +1,7 @@
 use std::fs;
 use std::io::{self, BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::LazyLock;
 
 use regex::Regex;
@@ -118,14 +118,33 @@ pub(crate) fn find_lang(ext: &str) -> Option<&'static LangPatterns> {
 
 pub(crate) fn extract_symbols(path: &Path, lang: &LangPatterns) -> io::Result<Vec<(String, usize)>> {
     let file = fs::File::open(path)?;
-    Ok(extract_symbols_inner(BufReader::new(file), lang))
+    Ok(extract_symbols_from_reader(BufReader::new(file), lang))
+}
+
+/// Read file once, return both symbols and lines (avoids double read for call graph).
+fn extract_symbols_and_lines(path: &Path, lang: &LangPatterns) -> io::Result<(Vec<(String, usize)>, Vec<String>)> {
+    let file = fs::File::open(path)?;
+    let mut lines = Vec::new();
+    let mut symbols = Vec::new();
+    let mut seen = HashSet::new();
+    let is_go = lang.extensions.contains(&"go");
+
+    for (idx, line) in BufReader::new(file).lines().enumerate() {
+        let line = match line {
+            Ok(l) => l,
+            Err(_) => return Ok((symbols, lines)),
+        };
+        extract_symbol_from_line(&line, idx, is_go, lang, &mut seen, &mut symbols);
+        lines.push(line);
+    }
+    Ok((symbols, lines))
 }
 
 pub(crate) fn extract_symbols_from_bytes(content: &[u8], lang: &LangPatterns) -> Vec<(String, usize)> {
-    extract_symbols_inner(content, lang)
+    extract_symbols_from_reader(content, lang)
 }
 
-fn extract_symbols_inner(reader: impl BufRead, lang: &LangPatterns) -> Vec<(String, usize)> {
+fn extract_symbols_from_reader(reader: impl BufRead, lang: &LangPatterns) -> Vec<(String, usize)> {
     let mut symbols = Vec::new();
     let mut seen = HashSet::new();
     let is_go = lang.extensions.contains(&"go");
@@ -133,31 +152,42 @@ fn extract_symbols_inner(reader: impl BufRead, lang: &LangPatterns) -> Vec<(Stri
     for (idx, line) in reader.lines().enumerate() {
         let line = match line {
             Ok(l) => l,
-            Err(_) => return symbols, // binary file or encoding error — stop
+            Err(_) => return symbols,
         };
-        for re in &lang.regexes {
-            if let Some(caps) = re.captures(&line) {
-                if let Some(m) = caps.get(1) {
-                    let name = m.as_str();
-                    if name.len() < 2 {
-                        break; // skip single-char symbols (noise)
-                    }
-                    let (prefix, mut is_pub) = symbol_prefix(&line);
-                    if is_go && is_go_exported(name) {
-                        is_pub = true;
-                    }
-                    let vis = if is_pub { "+" } else { "" };
-                    let full = format!("{vis}{prefix}{name}");
-                    if seen.insert(full.clone()) {
-                        symbols.push((full, idx + 1));
-                    }
-                }
-                break; // first matching pattern wins for this line
-            }
-        }
+        extract_symbol_from_line(&line, idx, is_go, lang, &mut seen, &mut symbols);
     }
 
     symbols
+}
+
+fn extract_symbol_from_line(
+    line: &str,
+    idx: usize,
+    is_go: bool,
+    lang: &LangPatterns,
+    seen: &mut HashSet<String>,
+    symbols: &mut Vec<(String, usize)>,
+) {
+    for re in &lang.regexes {
+        if let Some(caps) = re.captures(line) {
+            if let Some(m) = caps.get(1) {
+                let name = m.as_str();
+                if name.len() < 2 {
+                    break;
+                }
+                let (prefix, mut is_pub) = symbol_prefix(line);
+                if is_go && is_go_exported(name) {
+                    is_pub = true;
+                }
+                let vis = if is_pub { "+" } else { "" };
+                let full = format!("{vis}{prefix}{name}");
+                if seen.insert(full.clone()) {
+                    symbols.push((full, idx + 1));
+                }
+            }
+            break;
+        }
+    }
 }
 
 /// Extract a compact keyword prefix and visibility from the line.
@@ -243,6 +273,97 @@ fn is_go_exported(name: &str) -> bool {
     name.chars().next().map_or(false, |c| c.is_uppercase())
 }
 
+/// Check if a symbol string represents a callable (function/method).
+fn is_callable_symbol(sym: &str) -> bool {
+    let s = sym.strip_prefix('+').unwrap_or(sym);
+    s.starts_with("fn ")
+        || s.starts_with("def ")
+        || s.starts_with("defp ")
+        || s.starts_with("const ")
+        || s.starts_with("function ")
+}
+
+/// Extract the bare name from a symbol string like "+fn foo" → "foo".
+fn bare_name(sym: &str) -> &str {
+    sym.split_whitespace().last().unwrap_or(sym)
+}
+
+/// Extract intra-file call graph. Returns a vec parallel to `symbols` where
+/// each entry lists indices of other symbols called by that symbol.
+fn extract_calls(lines: &[String], symbols: &[(String, usize)]) -> Vec<Vec<usize>> {
+    // Build lookup: bare_name → symbol index (only callables)
+    let mut callable_map: HashMap<&str, usize> = HashMap::new();
+    for (i, (sym, _)) in symbols.iter().enumerate() {
+        if is_callable_symbol(sym) {
+            callable_map.insert(bare_name(sym), i);
+        }
+    }
+
+    let mut result: Vec<Vec<usize>> = vec![Vec::new(); symbols.len()];
+
+    for (i, (sym, start_line)) in symbols.iter().enumerate() {
+        if !is_callable_symbol(sym) {
+            continue;
+        }
+        let my_name = bare_name(sym);
+        let body_start = *start_line; // 1-based line number, so as 0-based index this skips the def line
+        let body_end = if i + 1 < symbols.len() {
+            symbols[i + 1].1.saturating_sub(1)
+        } else {
+            lines.len()
+        };
+
+        let mut seen = HashSet::new();
+        for line_idx in body_start..body_end {
+            let line = match lines.get(line_idx) {
+                Some(l) => l,
+                None => break,
+            };
+            let trimmed = line.trim_start();
+            // Skip comment lines (best-effort)
+            if trimmed.starts_with("//")
+                || trimmed.starts_with('#')
+                || trimmed.starts_with("--")
+                || trimmed.starts_with("/*")
+                || trimmed.starts_with('*')
+            {
+                continue;
+            }
+            // Scan for identifiers before '('
+            let bytes = line.as_bytes();
+            for (pos, &b) in bytes.iter().enumerate() {
+                if b != b'(' {
+                    continue;
+                }
+                // Walk backward past whitespace
+                let mut end = pos;
+                while end > 0 && bytes[end - 1].is_ascii_whitespace() {
+                    end -= 1;
+                }
+                // Extract identifier (contiguous word chars)
+                let mut start = end;
+                while start > 0 && (bytes[start - 1].is_ascii_alphanumeric() || bytes[start - 1] == b'_') {
+                    start -= 1;
+                }
+                if start == end {
+                    continue;
+                }
+                let ident = &line[start..end];
+                if ident == my_name {
+                    continue; // skip self-calls
+                }
+                if let Some(&idx) = callable_map.get(ident) {
+                    if seen.insert(idx) {
+                        result[i].push(idx);
+                    }
+                }
+            }
+        }
+    }
+
+    result
+}
+
 fn collect_files(
     dir: &Path,
     root: &Path,
@@ -295,6 +416,7 @@ pub fn run_map(
     depth: usize,
     limit: usize,
     grep: Option<&str>,
+    calls: bool,
     out: &mut impl Write,
 ) -> io::Result<()> {
     let mut files = Vec::new();
@@ -305,7 +427,8 @@ pub fn run_map(
     let glob = grep.map(Glob::compile);
 
     // Collect files that have symbols (after grep filtering)
-    let mut results: Vec<(&str, Vec<(String, usize)>)> = Vec::new();
+    // Each entry: (rel_path, filtered_symbols, call_suffixes_parallel_to_filtered)
+    let mut results: Vec<(&str, Vec<(String, usize)>, Vec<String>)> = Vec::new();
     for (rel, path) in &files {
         let ext = match path.extension().and_then(|e| e.to_str()) {
             Some(e) => e,
@@ -315,27 +438,50 @@ pub fn run_map(
             Some(l) => l,
             None => continue,
         };
-        let symbols = extract_symbols(path, lang)?;
+        let (symbols, lines) = if calls {
+            extract_symbols_and_lines(path, lang)?
+        } else {
+            (extract_symbols(path, lang)?, Vec::new())
+        };
         if symbols.is_empty() {
             continue;
         }
 
-        let filtered: Vec<(String, usize)> = match &glob {
-            Some(g) => symbols.into_iter().filter(|(s, _)| {
-                let name = s.split_whitespace().last().unwrap_or(s);
-                g.matches(name)
-            }).collect(),
-            None => symbols,
+        // Compute call suffixes on full symbol set before filtering
+        let call_suffixes_all: Vec<String> = if calls {
+            let graph = extract_calls(&lines, &symbols);
+            graph.iter().map(|callees| {
+                if callees.is_empty() {
+                    String::new()
+                } else {
+                    let names: Vec<&str> = callees.iter()
+                        .map(|&j| bare_name(&symbols[j].0))
+                        .collect();
+                    format!(" -> {}", names.join(", "))
+                }
+            }).collect()
+        } else {
+            Vec::new()
         };
 
+        // Filter symbols, carrying along call suffixes
+        let filtered: Vec<((String, usize), String)> = symbols.into_iter().enumerate()
+            .filter(|(_, (s, _))| glob.as_ref().map_or(true, |g| g.matches(bare_name(s))))
+            .map(|(i, sym)| {
+                let suffix = call_suffixes_all.get(i).cloned().unwrap_or_default();
+                (sym, suffix)
+            })
+            .collect();
+
         if !filtered.is_empty() {
-            results.push((rel, filtered));
+            let (syms, suffixes): (Vec<_>, Vec<_>) = filtered.into_iter().unzip();
+            results.push((rel, syms, suffixes));
         }
     }
 
     // Output with tree-style indentation: dir/ → file → symbols
     let mut last_dir = String::new();
-    for (rel, symbols) in &results {
+    for (rel, symbols, suffixes) in &results {
         let (dir, filename) = match rel.rfind('/') {
             Some(pos) => (&rel[..pos], &rel[pos + 1..]),
             None => ("", *rel),
@@ -343,14 +489,12 @@ pub fn run_map(
 
         // Emit directory headers when directory changes
         if !dir.is_empty() && dir != last_dir {
-            // Emit nested dir components
             let parts: Vec<&str> = dir.split('/').collect();
             let last_parts: Vec<&str> = if last_dir.is_empty() {
                 Vec::new()
             } else {
                 last_dir.split('/').collect()
             };
-            // Find where paths diverge
             let common = parts.iter().zip(last_parts.iter()).take_while(|(a, b)| a == b).count();
             for (i, part) in parts.iter().enumerate().skip(common) {
                 let indent = " ".repeat(i);
@@ -364,16 +508,15 @@ pub fn run_map(
         let sym_indent = " ".repeat(file_depth + 1);
 
         writeln!(out, "{file_indent}{filename}")?;
+        let show_count = if limit > 0 && symbols.len() > limit { limit } else { symbols.len() };
+        for i in 0..show_count {
+            let (sym, line) = &symbols[i];
+            let suffix = &suffixes[i];
+            writeln!(out, "{sym_indent}{sym}:{line}{suffix}")?;
+        }
         if limit > 0 && symbols.len() > limit {
-            for (sym, line) in &symbols[..limit] {
-                writeln!(out, "{sym_indent}{sym}:{line}")?;
-            }
             let hidden = symbols.len() - limit;
             writeln!(out, "{sym_indent}...+{hidden}")?;
-        } else {
-            for (sym, line) in symbols {
-                writeln!(out, "{sym_indent}{sym}:{line}")?;
-            }
         }
     }
 
