@@ -3,7 +3,7 @@ use std::path::Path;
 use std::process::Command;
 
 fn repo39_bin() -> Command {
-    Command::new(env!("CARGO_BIN_EXE_repo39-cli"))
+    Command::new(env!("CARGO_BIN_EXE_repo39"))
 }
 
 fn create_tree(base: &Path) {

@@ -112,7 +112,7 @@ impl ServerHandler for McpServer {
         InitializeResult::new(
             ServerCapabilities::builder().enable_tools().build(),
         )
-        .with_server_info(Implementation::new("repo39-mcp", env!("CARGO_PKG_VERSION")))
+        .with_server_info(Implementation::new("repo39", env!("CARGO_PKG_VERSION")))
         .with_instructions(
             "Token-optimized repository explorer for AI agents. \
              Tools: repo39_tree (directory structure), repo39_identify (project type), \

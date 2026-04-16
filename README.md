@@ -5,22 +5,20 @@
           █           ▄▄▄█ ▄▄▄█ 
           ▀                     
 ```                                
-Token-optimized repo exploration harness for AI agents.
+Token-optimized repo explorer for AI agents.
 
-Scans a directory and outputs a compact tree. Designed to minimize tokens so agents can understand repo structure fast and cheap.
+Scans a directory and outputs a compact tree. Designed to minimize tokens so agents can understand repo structure fast and cheap. Single binary: CLI by default, MCP server with `repo39 mcp`.
 
 ## Install
 
 ```bash
-cargo install repo39-cli repo39-mcp   # both
-cargo install repo39-cli              # CLI only
-cargo install repo39-mcp              # MCP server only
+cargo install repo39
 ```
 
 ## Quick Reference
 
 ```
-repo39-cli <path> [flags] [commands]
+repo39 <path> [flags] [commands]
 
 Flags: -s fdhca  -d N  -n N  -g glob  -o nscm  -i smcgt  -u KMG
 
@@ -79,7 +77,7 @@ Two interfaces, same output. Use the CLI from a shell or the MCP server from any
 ### 1. Identify the project
 
 ```bash
-repo39-cli /project --identify
+repo39 /project --identify
 ```
 ```python
 repo39_identify { "path": "/project" }
@@ -95,7 +93,7 @@ docs 0.12
 ### 2. Read dependencies
 
 ```bash
-repo39-cli /project --deps
+repo39 /project --deps
 ```
 ```python
 repo39_deps { "path": "/project" }
@@ -114,7 +112,7 @@ Parses: Cargo.toml, package.json, pyproject.toml, requirements.txt, go.mod, Gemf
 
 Symbols include line numbers and visibility (`+` = public):
 ```bash
-repo39-cli /project --map -d 99
+repo39 /project --map -d 99
 ```
 ```python
 repo39_map { "path": "/project", "depth": 99 }
@@ -130,7 +128,7 @@ src/walk.rs
 
 Show call graph:
 ```bash
-repo39-cli /project --map --calls -d 99
+repo39 /project --map --calls -d 99
 ```
 ```python
 repo39_map { "path": "/project", "depth": 99, "calls": true }
@@ -143,7 +141,7 @@ src/walk.rs
 
 Limit symbols per file:
 ```bash
-repo39-cli /project --map -d 99 -n 3
+repo39 /project --map -d 99 -n 3
 ```
 ```python
 repo39_map { "path": "/project", "depth": 99, "limit": 3 }
@@ -158,7 +156,7 @@ src/config.rs
 
 Search for a specific symbol:
 ```bash
-repo39-cli /project --map -d 99 -g "login*"
+repo39 /project --map -d 99 -g "login*"
 ```
 ```python
 repo39_map { "path": "/project", "depth": 99, "grep": "login*" }
@@ -172,7 +170,7 @@ src/auth.rs
 ### 4. Check recent activity
 
 ```bash
-repo39-cli /project --changes
+repo39 /project --changes
 ```
 ```python
 repo39_changes { "path": "/project" }
@@ -187,7 +185,7 @@ Time-relative (`3m`, `2h`, `1d`, `2w`, `3M`, `1y`). Shows insertions/deletions, 
 
 Branch diff:
 ```bash
-repo39-cli /project --changes main..HEAD
+repo39 /project --changes main..HEAD
 ```
 ```python
 repo39_changes { "path": "/project", "branch": "main..HEAD" }
@@ -196,7 +194,7 @@ repo39_changes { "path": "/project", "branch": "main..HEAD" }
 ### 5. Search file contents
 
 ```bash
-repo39-cli /project --search "TODO"
+repo39 /project --search "TODO"
 ```
 ```python
 repo39_search { "path": "/project", "pattern": "TODO" }
@@ -208,7 +206,7 @@ src/walk.rs:18 // TODO: optimize
 
 With regex and context:
 ```bash
-repo39-cli /project --search "fn\s+test_" --regex --context 1 --file-filter "*.rs"
+repo39 /project --search "fn\s+test_" --regex --context 1 --file-filter "*.rs"
 ```
 ```python
 repo39_search {
@@ -231,7 +229,7 @@ Max 50 results by default. Use `--max-results 0` / `"max_results": 0` for unlimi
 ### 6. Review symbol-level changes
 
 ```bash
-repo39-cli /project --review
+repo39 /project --review
 ```
 ```python
 repo39_review { "path": "/project" }
@@ -246,7 +244,7 @@ src/old.rs
 
 Compares against `HEAD~1` by default. Specify a ref:
 ```bash
-repo39-cli /project --review main
+repo39 /project --review main
 ```
 ```python
 repo39_review { "path": "/project", "ref_spec": "main" }
@@ -257,7 +255,7 @@ Symbols: `+` = added, `-` = removed, `~` = modified. Max 20 changed files.
 ### 7. Full picture in one command
 
 ```bash
-repo39-cli /project --summary
+repo39 /project --summary
 ```
 ```python
 repo39_summary { "path": "/project" }
@@ -288,7 +286,7 @@ Combines identify + deps + map (depth 99, 1 symbol/file) + changes. Equivalent t
 ### 8. Explore structure
 
 ```bash
-repo39-cli /project -d 1 -n 3
+repo39 /project -d 1 -n 3
 ```
 ```python
 repo39_tree { "path": "/project", "depth": 1, "limit": 3 }
@@ -308,7 +306,7 @@ One level deep, max 3 items per subfolder.
 ### 9. Find specific files
 
 ```bash
-repo39-cli /project -g "*.json" -s a
+repo39 /project -g "*.json" -s a
 ```
 ```python
 repo39_tree { "path": "/project", "grep": "*.json", "show": "a" }
@@ -324,7 +322,7 @@ Full depth search. Only matching files + ancestor dirs shown.
 ### 10. Check sizes and dates
 
 ```bash
-repo39-cli /project -d 1 -i sm
+repo39 /project -d 1 -i sm
 ```
 ```python
 repo39_tree { "path": "/project", "depth": 1, "info": "sm" }
@@ -338,7 +336,7 @@ src/
 ### 11. Git dirty files
 
 ```bash
-repo39-cli /project -d 99 -i g
+repo39 /project -d 99 -i g
 ```
 ```python
 repo39_tree { "path": "/project", "depth": 99, "info": "g" }
@@ -359,13 +357,14 @@ Note: `--identify` does NOT skip these — their presence is a detection signal.
 
 ## MCP Server
 
-`repo39-mcp` exposes the same capabilities as an MCP server over stdio. Configure via `.mcp.json`:
+`repo39 mcp` starts the MCP server over stdio. Configure via `.mcp.json`:
 
 ```json
 {
   "mcpServers": {
     "repo39": {
-      "command": "repo39-mcp"
+      "command": "repo39",
+      "args": ["mcp"]
     }
   }
 }
@@ -388,7 +387,7 @@ All tools take a required `path` parameter. Tree/map tools accept `depth`, `limi
 
 ## Benchmark: repo39 vs standard tools
 
-`repo39-cli --summary` vs the equivalent shell commands (`ls`, `find`, `cat`, `grep -rn`, `git log --stat`) to get the same repo orientation.
+`repo39 /project --summary` vs the equivalent shell commands (`ls`, `find`, `cat`, `grep -rn`, `git log --stat`) to get the same repo orientation.
 
 ### Results
 
@@ -424,3 +423,7 @@ The biggest win is symbol extraction: `grep -rn` outputs full matching lines whi
 ## Cross-platform
 
 Works on Linux, macOS, and Windows. Output always uses `/` path separators.
+
+## License
+
+Apache-2.0

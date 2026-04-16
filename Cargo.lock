@@ -612,23 +612,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dc897dd8d9e8bd1ed8cdad82b5966c3e0ecae09fb1907d58efaa013543185d0a"
 
 [[package]]
-name = "repo39-cli"
-version = "1.0.0"
-dependencies = [
- "clap",
- "regex",
- "tempfile",
-]
-
-[[package]]
-name = "repo39-mcp"
-version = "1.0.0"
+name = "repo39"
+version = "1.0.1"
 dependencies = [
  "anyhow",
+ "clap",
  "regex",
  "rmcp",
  "schemars",
  "serde",
+ "tempfile",
  "tokio",
 ]
 

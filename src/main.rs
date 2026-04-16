@@ -5,6 +5,7 @@ mod git;
 mod glob;
 mod identify;
 mod map;
+mod mcp;
 mod review;
 mod search;
 mod util;
@@ -28,6 +29,17 @@ use util::canonicalize;
 use walk::{grep_walk, walk, WalkCtx};
 
 fn main() -> io::Result<()> {
+    // If first arg is "mcp", run MCP server
+    if std::env::args().nth(1).as_deref() == Some("mcp") {
+        return tokio::runtime::Runtime::new()
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?
+            .block_on(async {
+                mcp::run_mcp_stdio()
+                    .await
+                    .map_err(|e| io::Error::new(io::ErrorKind::Other, e))
+            });
+    }
+
     let cli = Cli::parse();
     let mut dir_buf = canonicalize(&cli.path)?;
 
