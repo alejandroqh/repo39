@@ -2,10 +2,11 @@
   "name": "repo39",
   "version": "1.0.0",
   "description": "Token-optimized repository explorer for AI agents",
-  "components": {
-    "mcp": {
-      "config": "../.mcp.json"
-    }
+  "author": {
+    "name": "Alejandro Quintanar",
+    "url": "https://github.com/alejandroqh"
   },
-  "postInstall": "The repo39-mcp binary must be in your PATH or update the path in .mcp.json"
+  "repository": "https://github.com/alejandroqh/repo39",
+  "license": "Apache-2.0",
+  "keywords": ["ai", "agent", "mcp", "token", "repo"]
 }

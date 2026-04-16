@@ -5,7 +5,7 @@ Token-optimized repository explorer for AI agents.
 ## Install
 
 ```bash
-openclaw plugins install git@github.com:alejandroqh/repo39.git
+cargo install repo39-mcp
 ```
 
 ## MCP Tools
