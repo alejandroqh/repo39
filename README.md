@@ -387,29 +387,31 @@ All tools take a required `path` parameter. Tree/map tools accept `depth`, `limi
 
 ### Results
 
-| | Small Rust workspace (~30 files) | Large Flutter app (~500 files) |
+| | [expressjs/express](https://github.com/expressjs/express) (~240 files) | [tiangolo/fastapi](https://github.com/tiangolo/fastapi) (~3k files) |
 |---|---|---|
 | **repo39 calls** | 1 | 1 |
-| **standard calls** | 8 | 4 |
-| **repo39 tokens** | 365 | 999 |
-| **standard tokens** | 2,749 | 7,685 |
-| **token savings** | **86%** | **87%** |
-| **byte savings** | **92%** | **95%** |
+| **standard calls** | 5 | 5 |
+| **repo39 tokens** | 479 | 3,281 |
+| **standard tokens** | 1,727 | 26,640 |
+| **token savings** | **72%** | **87%** |
+| **byte savings** | **81%** | **92%** |
 
 ### Where the savings come from
 
+fastapi standard breakdown:
 ```
-standard breakdown      Calls   Lines Words(≈tok)      Bytes
-identify (ls + find)        2      17           27        187
-deps (cat manifests)        4      58          186       1272
-map (grep definitions)      1     309         1815      34594
-changes (git log --stat)    1     168          721       8016
+                        Calls   Lines Words(≈tok)      Bytes
+identify (ls + find)        2      28           47        301
+deps (cat manifests)        1     340          928      10497
+map (grep definitions)      1    4381        13345     447513
+changes (git log --stat)    1    2986        12320     184850
 ```
 
-The biggest win is symbol extraction: `grep -rn` outputs full matching lines while repo39 outputs compact `line:name` format — ~95% byte reduction on map alone.
+The biggest win is symbol extraction: `grep -rn` outputs full matching lines while repo39 outputs compact `line:name` format — 99% byte reduction on map alone.
 
 ### Reproduce
 
+`benchmark.sh` is included in the repo. Run it against any project:
 ```bash
 ./benchmark.sh /path/to/repo
 ```
