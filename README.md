@@ -108,7 +108,7 @@ Parses: Cargo.toml, package.json, pyproject.toml, requirements.txt, go.mod, Gemf
 13 languages: Rust, Python, JS, TS, Go, Java/Kotlin, Ruby, PHP, C/C++, Swift, Elixir, Dart, Shell.
 
 Symbols include line numbers and visibility (`+` = public):
-```bash
+```shell
 repo39-cli /project --map -d 99
 ```
 ```python
