@@ -3,6 +3,14 @@ name = "repo39-mcp"
 version.workspace = true
 edition.workspace = true
 description = "MCP server exposing repo39 tools for AI agents"
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
+readme = "../README.md"
+exclude = ["../benchmark.sh", "../build.sh", "../.claude-plugin/"]
 
 [[bin]]
 name = "repo39-mcp"

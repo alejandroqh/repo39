@@ -7,16 +7,23 @@ Scans a directory and outputs a compact tree. Designed to minimize tokens so age
 ## Install
 
 ```bash
-cargo install --path .
+cargo install repo39-cli repo39-mcp   # both
+cargo install repo39-cli              # CLI only
+cargo install repo39-mcp              # MCP server only
 ```
 
 ## Quick Reference
 
 ```
-repo39-cli <path> [-s fdhca] [-d N] [-n N] [-g glob] [-o nscm] [-i smcgt] [-u KMG]
-              [--identify] [--map] [--calls] [--deps] [--changes] [--summary]
-              [--search <pat> [--regex] [--context N] [--file-filter glob] [--max-results N]]
-              [--review [ref]]
+repo39-cli <path> [flags] [commands]
+
+Flags: -s fdhca  -d N  -n N  -g glob  -o nscm  -i smcgt  -u KMG
+
+Commands:
+  --identify    --map [--calls]    --deps
+  --changes     --summary          --review [ref]
+  --search <pat> [--regex] [--context N]
+                 [--file-filter glob] [--max-results N]
 ```
 
 | Flag | What | Values | Default |

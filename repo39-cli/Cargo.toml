@@ -3,6 +3,14 @@ name = "repo39-cli"
 version.workspace = true
 edition.workspace = true
 description = "Token-optimized repo explorer for AI agents"
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
+readme = "../README.md"
+exclude = ["../benchmark.sh", "../build.sh", "../.claude-plugin/"]
 
 [[bin]]
 name = "repo39-cli"
