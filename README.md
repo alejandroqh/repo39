@@ -1,5 +1,10 @@
-# repo39
-
+```
+ ▄▄▄ ▗▞▀▚▖▄▄▄▄   ▄▄▄  ▄▄▄▄ ▄▄▄▄ 
+█    ▐▛▀▀▘█   █ █   █    █ █  █ 
+█    ▝▚▄▄▖█▄▄▄▀ ▀▄▄▄▀ ▀▀▀█ ▀▀▀█ 
+          █           ▄▄▄█ ▄▄▄█ 
+          ▀                     
+```                                
 Token-optimized repo explorer for AI agents.
 
 Scans a directory and outputs a compact tree. Designed to minimize tokens so agents can understand repo structure fast and cheap.
