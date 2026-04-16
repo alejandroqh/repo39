@@ -76,7 +76,7 @@ Two interfaces, same output. Use the CLI from a shell or the MCP server from any
 ```bash
 repo39-cli /project --identify
 ```
-```json
+```python
 repo39_identify { "path": "/project" }
 ```
 ```
@@ -92,7 +92,7 @@ docs 0.12
 ```bash
 repo39-cli /project --deps
 ```
-```json
+```python
 repo39_deps { "path": "/project" }
 ```
 ```
@@ -111,7 +111,7 @@ Symbols include line numbers and visibility (`+` = public):
 ```bash
 repo39-cli /project --map -d 99
 ```
-```json
+```python
 repo39_map { "path": "/project", "depth": 99 }
 ```
 ```
@@ -127,7 +127,7 @@ Show call graph:
 ```bash
 repo39-cli /project --map --calls -d 99
 ```
-```json
+```python
 repo39_map { "path": "/project", "depth": 99, "calls": true }
 ```
 ```
@@ -140,7 +140,7 @@ Limit symbols per file:
 ```bash
 repo39-cli /project --map -d 99 -n 3
 ```
-```json
+```python
 repo39_map { "path": "/project", "depth": 99, "limit": 3 }
 ```
 ```
@@ -155,7 +155,7 @@ Search for a specific symbol:
 ```bash
 repo39-cli /project --map -d 99 -g "login*"
 ```
-```json
+```python
 repo39_map { "path": "/project", "depth": 99, "grep": "login*" }
 ```
 ```
@@ -169,7 +169,7 @@ src/auth.rs
 ```bash
 repo39-cli /project --changes
 ```
-```json
+```python
 repo39_changes { "path": "/project" }
 ```
 ```
@@ -184,7 +184,7 @@ Branch diff:
 ```bash
 repo39-cli /project --changes main..HEAD
 ```
-```json
+```python
 repo39_changes { "path": "/project", "branch": "main..HEAD" }
 ```
 
@@ -193,7 +193,7 @@ repo39_changes { "path": "/project", "branch": "main..HEAD" }
 ```bash
 repo39-cli /project --search "TODO"
 ```
-```json
+```python
 repo39_search { "path": "/project", "pattern": "TODO" }
 ```
 ```
@@ -205,7 +205,7 @@ With regex and context:
 ```bash
 repo39-cli /project --search "fn\s+test_" --regex --context 1 --file-filter "*.rs"
 ```
-```json
+```python
 repo39_search {
   "path": "/project",
   "pattern": "fn\\s+test_",
@@ -228,7 +228,7 @@ Max 50 results by default. Use `--max-results 0` / `"max_results": 0` for unlimi
 ```bash
 repo39-cli /project --review
 ```
-```json
+```python
 repo39_review { "path": "/project" }
 ```
 ```
@@ -243,7 +243,7 @@ Compares against `HEAD~1` by default. Specify a ref:
 ```bash
 repo39-cli /project --review main
 ```
-```json
+```python
 repo39_review { "path": "/project", "ref_spec": "main" }
 ```
 
@@ -254,7 +254,7 @@ Symbols: `+` = added, `-` = removed, `~` = modified. Max 20 changed files.
 ```bash
 repo39-cli /project --summary
 ```
-```json
+```python
 repo39_summary { "path": "/project" }
 ```
 ```
@@ -285,7 +285,7 @@ Combines identify + deps + map (depth 99, 1 symbol/file) + changes. Equivalent t
 ```bash
 repo39-cli /project -d 1 -n 3
 ```
-```json
+```python
 repo39_tree { "path": "/project", "depth": 1, "limit": 3 }
 ```
 ```
@@ -305,7 +305,7 @@ One level deep, max 3 items per subfolder.
 ```bash
 repo39-cli /project -g "*.json" -s a
 ```
-```json
+```python
 repo39_tree { "path": "/project", "grep": "*.json", "show": "a" }
 ```
 ```
@@ -321,7 +321,7 @@ Full depth search. Only matching files + ancestor dirs shown.
 ```bash
 repo39-cli /project -d 1 -i sm
 ```
-```json
+```python
 repo39_tree { "path": "/project", "depth": 1, "info": "sm" }
 ```
 ```
@@ -335,7 +335,7 @@ src/
 ```bash
 repo39-cli /project -d 99 -i g
 ```
-```json
+```python
 repo39_tree { "path": "/project", "depth": 99, "info": "g" }
 ```
 ```
