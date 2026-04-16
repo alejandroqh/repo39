@@ -63,8 +63,8 @@ name/ 3     dir with file count (-s c at depth limit)
 name 1.4K   file with size (-i s)
 name 2026-04-10   file with date (-i m or -i c)
 name 450     file with token count (-i t)
-+fn foo:10   public symbol with line number (--map)
-fn bar:20 -> baz, qux   call graph (--map --calls)
+10:+fn foo   public symbol with line number (--map)
+20:fn bar -> baz, qux   call graph (--map --calls)
 ```
 
 ## Agent Workflow
@@ -116,11 +116,11 @@ repo39_map { "path": "/project", "depth": 99 }
 ```
 ```
 src/main.rs
- fn main:1
+ 1:fn main
 src/walk.rs
- +struct WalkCtx:5
- +fn walk:12
- fn grep_walk:30
+ 5:+struct WalkCtx
+ 12:+fn walk
+ 30:fn grep_walk
 ```
 
 Show call graph:
@@ -132,8 +132,8 @@ repo39_map { "path": "/project", "depth": 99, "calls": true }
 ```
 ```
 src/walk.rs
- +fn walk:12 -> grep_walk
- fn grep_walk:30
+ 12:+fn walk -> grep_walk
+ 30:fn grep_walk
 ```
 
 Limit symbols per file:
@@ -145,9 +145,9 @@ repo39_map { "path": "/project", "depth": 99, "limit": 3 }
 ```
 ```
 src/config.rs
- struct Cli:5
- struct ShowFilter:12
- impl ShowFilter:20
+ 5:struct Cli
+ 12:struct ShowFilter
+ 20:impl ShowFilter
  ...+9
 ```
 
@@ -160,8 +160,8 @@ repo39_map { "path": "/project", "depth": 99, "grep": "login*" }
 ```
 ```
 src/auth.rs
- fn login:8
- fn login_handler:15
+ 8:fn login
+ 15:fn login_handler
 ```
 
 ### 4. Check recent activity
@@ -233,8 +233,8 @@ repo39_review { "path": "/project" }
 ```
 ```
 src/main.rs
- +fn new_feature:45
- ~fn main:1
+ +45:fn new_feature
+ ~1:fn main
 src/old.rs
  -fn deprecated
 ```
@@ -268,9 +268,9 @@ regex 1
 
 [map]
 src/main.rs
- fn main:1
+ 1:fn main
 src/walk.rs
- +struct WalkCtx:5
+ 5:+struct WalkCtx
  ...+3
 
 [changes]
@@ -406,7 +406,7 @@ map (grep definitions)      1     309         1815      34594
 changes (git log --stat)    1     168          721       8016
 ```
 
-The biggest win is symbol extraction: `grep -rn` outputs full matching lines while repo39 outputs compact `fn name:line` format — ~95% byte reduction on map alone.
+The biggest win is symbol extraction: `grep -rn` outputs full matching lines while repo39 outputs compact `line:name` format — ~95% byte reduction on map alone.
 
 ### Reproduce
 

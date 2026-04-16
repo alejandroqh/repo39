@@ -653,14 +653,14 @@ pub struct App {}
     assert!(l.contains(&"src/".into()));
     assert!(l.iter().any(|s| s == " lib.rs"));
     assert!(l.iter().any(|s| s == " main.rs"));
-    assert!(l.iter().any(|s| s.starts_with("  +fn main:")));
-    assert!(l.iter().any(|s| s.starts_with("  fn helper:")));
-    assert!(l.iter().any(|s| s.starts_with("  +struct Config:")));
-    assert!(l.iter().any(|s| s.starts_with("  enum Mode:")));
-    assert!(l.iter().any(|s| s.starts_with("  trait Runnable:")));
-    assert!(l.iter().any(|s| s.starts_with("  impl Config:")));
-    assert!(l.iter().any(|s| s.starts_with("  +fn init:")));
-    assert!(l.iter().any(|s| s.starts_with("  +struct App:")));
+    assert!(l.iter().any(|s| s == "  1:+fn main"));
+    assert!(l.iter().any(|s| s == "  2:fn helper"));
+    assert!(l.iter().any(|s| s == "  3:+struct Config"));
+    assert!(l.iter().any(|s| s == "  4:enum Mode"));
+    assert!(l.iter().any(|s| s == "  5:trait Runnable"));
+    assert!(l.iter().any(|s| s == "  6:impl Config"));
+    assert!(l.iter().any(|s| s == "  1:+fn init"));
+    assert!(l.iter().any(|s| s == "  2:+struct App"));
 }
 
 #[test]
@@ -696,9 +696,9 @@ class Server:
 
     let l = run_map(tmp.path(), &[]);
     assert!(l.contains(&"app.py".into()));
-    assert!(l.iter().any(|s| s.starts_with(" def hello:")));
-    assert!(l.iter().any(|s| s.starts_with(" class Server:")));
-    assert!(l.iter().any(|s| s.starts_with(" def run:")));
+    assert!(l.iter().any(|s| s == " 1:def hello"));
+    assert!(l.iter().any(|s| s == " 4:class Server"));
+    assert!(l.iter().any(|s| s == " 5:def run"));
 }
 
 #[test]
@@ -708,7 +708,7 @@ fn map_ignores_other_flags() {
 
     let l = run_map(tmp.path(), &["-d", "5", "-s", "a"]);
     assert!(l.contains(&"test.rs".into()));
-    assert!(l.iter().any(|s| s.starts_with(" fn foo:")));
+    assert!(l.iter().any(|s| s == " 1:fn foo"));
     assert!(!l.iter().any(|s| s.ends_with('/')));
 }
 
@@ -725,9 +725,9 @@ fn epsilon() {}
 
     let l = run_map(tmp.path(), &["-n", "2"]);
     assert!(l.contains(&"big.rs".into()));
-    assert!(l.iter().any(|s| s.starts_with(" fn alpha:")));
-    assert!(l.iter().any(|s| s.starts_with(" fn beta:")));
-    assert!(!l.iter().any(|s| s.starts_with(" fn gamma:")));
+    assert!(l.iter().any(|s| s == " 1:fn alpha"));
+    assert!(l.iter().any(|s| s == " 2:fn beta"));
+    assert!(!l.iter().any(|s| s.contains("fn gamma")));
     assert!(l.iter().any(|s| s == " ...+3"), "should show ...+3: {l:?}");
 }
 
@@ -741,13 +741,13 @@ fn map_depth_limits_subdirs() {
 
     // depth 1 = root + one level only (src/*.rs but not src/nested/*.rs)
     let l = run_map(tmp.path(), &["-d", "1"]);
-    assert!(l.iter().any(|s| s.trim().starts_with("fn shallow:")));
-    assert!(l.iter().any(|s| s.trim().starts_with("fn middle:")));
+    assert!(l.iter().any(|s| s.trim().starts_with("1:fn shallow")));
+    assert!(l.iter().any(|s| s.trim().starts_with("1:fn middle")));
     assert!(!l.iter().any(|s| s.contains("deep")));
 
     // default (no -d) = full depth
     let l = run_map(tmp.path(), &[]);
-    assert!(l.iter().any(|s| s.trim().starts_with("fn deep:")));
+    assert!(l.iter().any(|s| s.trim().starts_with("1:fn deep")));
 }
 
 // --- deps tests ---

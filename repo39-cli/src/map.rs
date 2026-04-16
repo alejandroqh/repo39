@@ -512,7 +512,7 @@ pub fn run_map(
         for i in 0..show_count {
             let (sym, line) = &symbols[i];
             let suffix = &suffixes[i];
-            writeln!(out, "{sym_indent}{sym}:{line}{suffix}")?;
+            writeln!(out, "{sym_indent}{line}:{sym}{suffix}")?;
         }
         if limit > 0 && symbols.len() > limit {
             let hidden = symbols.len() - limit;

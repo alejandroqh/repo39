@@ -50,7 +50,7 @@ impl McpServer {
         capture(&params.path, run_identify).map_err(|e| e.to_string())
     }
 
-    #[tool(description = "Extract code symbols from source files. Output: indented tree (dir/ file symbols). Symbol format: `prefix name:line` (e.g. `fn foo:10`, `class Bar:25`). With calls=true: `fn foo:10 -> bar, baz` showing intra-file call graph. 13 languages: rs py js ts go java kt rb php c/cpp swift ex dart sh.")]
+    #[tool(description = "Extract code symbols from source files. Output: indented tree (dir/ file symbols). Symbol format: `line:prefix name` (e.g. `10:fn foo`, `25:class Bar`). With calls=true: `10:fn foo -> bar, baz` showing intra-file call graph. 13 languages: rs py js ts go java kt rb php c/cpp swift ex dart sh.")]
     async fn repo39_map(
         &self,
         Parameters(params): Parameters<MapParams>,
@@ -89,7 +89,7 @@ impl McpServer {
         run_search_tool(params).map_err(|e| e.to_string())
     }
 
-    #[tool(description = "Show symbol-level changes between git refs. Output: `path` header then `+symbol:line` (added), `-symbol` (removed), `~symbol:line` (modified). Compares current vs ref_spec (default HEAD~1). Max 20 files.")]
+    #[tool(description = "Show symbol-level changes between git refs. Output: `path` header then `+line:symbol` (added), `-symbol` (removed), `~line:symbol` (modified). Compares current vs ref_spec (default HEAD~1). Max 20 files.")]
     async fn repo39_review(
         &self,
         Parameters(params): Parameters<ReviewParams>,

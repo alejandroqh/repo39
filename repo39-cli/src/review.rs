@@ -100,13 +100,13 @@ pub fn run_review(
 
         writeln!(out, "{file_path}")?;
         for (sym, line) in &added {
-            writeln!(out, " +{sym}:{line}")?;
+            writeln!(out, " +{line}:{sym}")?;
         }
         for sym in &removed {
             writeln!(out, " -{sym}")?;
         }
         for (sym, line) in &modified {
-            writeln!(out, " ~{sym}:{line}")?;
+            writeln!(out, " ~{line}:{sym}")?;
         }
     }
 
