@@ -25,18 +25,26 @@ measure() {
     printf '%s' "$input" | wc -lwc | awk '{print $1, $2, $3}'
 }
 
+now_ms() {
+    python3 -c "import time; print(int(time.time()*1000))" 2>/dev/null || echo $(( $(date +%s) * 1000 ))
+}
+
 SKIP_DIRS=(-not -path '*/.git/*' -not -path '*/target/*' -not -path '*/node_modules/*' -not -path '*/__pycache__/*' -not -path '*/.venv/*' -not -path '*/venv/*' -not -path '*/dist/*' -not -path '*/.next/*')
 
 # ============================================================
 # Phase 1: repo39
 # ============================================================
+r39_t0=$(now_ms)
 r39_out=$("$R39" "$TARGET" --summary 2>/dev/null || true)
+r39_t1=$(now_ms)
+r39_ms=$(( r39_t1 - r39_t0 ))
 r39_m=$(measure "$r39_out")
 r39_calls=1
 
 # ============================================================
 # Phase 2: standard method
 # ============================================================
+std_t0=$(now_ms)
 std_calls=0
 std_total_lines=0
 std_total_words=0
@@ -116,6 +124,8 @@ fi
 # ============================================================
 # Phase 3: output table
 # ============================================================
+std_t1=$(now_ms)
+std_ms=$(( std_t1 - std_t0 ))
 read -r r39_l r39_w r39_b <<< "$r39_m"
 
 pct() {
@@ -124,11 +134,17 @@ pct() {
     echo "$(( (std - r39) * 100 / std ))%"
 }
 
+fmt_ms() {
+    local ms="$1"
+    if [ "$ms" -lt 1000 ]; then echo "${ms}ms"
+    else printf '%.1fs' "$(echo "$ms / 1000" | bc -l)"; fi
+}
+
 printf '\n'
-printf '%-22s %6s %7s %12s %10s\n' "Method" "Calls" "Lines" "Words(≈tok)" "Bytes"
-printf '%-22s %6s %7s %12s %10s\n' "----------------------" "------" "-------" "------------" "----------"
-printf '%-22s %6d %7d %12d %10d\n' "repo39 --summary" "$r39_calls" "$r39_l" "$r39_w" "$r39_b"
-printf '%-22s %6d %7d %12d %10d\n' "standard method" "$std_calls" "$std_total_lines" "$std_total_words" "$std_total_bytes"
+printf '%-22s %6s %7s %12s %10s %8s\n' "Method" "Calls" "Lines" "Words(≈tok)" "Bytes" "Time"
+printf '%-22s %6s %7s %12s %10s %8s\n' "----------------------" "------" "-------" "------------" "----------" "--------"
+printf '%-22s %6d %7d %12d %10d %8s\n' "repo39 --summary" "$r39_calls" "$r39_l" "$r39_w" "$r39_b" "$(fmt_ms "$r39_ms")"
+printf '%-22s %6d %7d %12d %10d %8s\n' "standard method" "$std_calls" "$std_total_lines" "$std_total_words" "$std_total_bytes" "$(fmt_ms "$std_ms")"
 printf '%-22s %6s %7s %12s %10s\n' "savings" \
     "$(pct "$r39_calls" "$std_calls")" \
     "$(pct "$r39_l" "$std_total_lines")" \
