@@ -387,14 +387,14 @@ All tools take a required `path` parameter. Tree/map tools accept `depth`, `limi
 
 ### Results
 
-| | [expressjs/express](https://github.com/expressjs/express) (~240 files) | [tiangolo/fastapi](https://github.com/tiangolo/fastapi) (~3k files) |
-|---|---|---|
-| **repo39 calls** | 1 | 1 |
-| **standard calls** | 5 | 5 |
-| **repo39 tokens** | 479 | 3,281 |
-| **standard tokens** | 1,727 | 26,640 |
-| **token savings** | **72%** | **87%** |
-| **byte savings** | **81%** | **92%** |
+| | Calls | Tokens | Bytes | Savings |
+|---|---|---|---|---|
+| **[express](https://github.com/expressjs/express)** (~240 files) | | | | |
+| standard | 5 | 1,727 | 24,926 | — |
+| repo39 | 1 | 479 | 4,504 | **72% tokens, 81% bytes** |
+| **[fastapi](https://github.com/tiangolo/fastapi)** (~3k files) | | | | |
+| standard | 5 | 26,640 | 643,161 | — |
+| repo39 | 1 | 3,281 | 49,545 | **87% tokens, 92% bytes** |
 
 ### Where the savings come from
 
