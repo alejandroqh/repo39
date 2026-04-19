@@ -24,6 +24,10 @@ exclude = [
     "bench/",
 ]
 
+[lib]
+name = "repo39"
+path = "src/lib.rs"
+
 [[bin]]
 name = "repo39"
 path = "src/main.rs"
